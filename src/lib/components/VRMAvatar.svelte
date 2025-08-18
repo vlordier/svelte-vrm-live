@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { useTask, useThrelte } from '@threlte/core';
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	import { type VRM, VRMExpressionPresetName } from '@pixiv/three-vrm';
 	import { loadVRMModel } from '$lib/vrm/loadVRMModel';
 	import { Clock, Mesh } from 'three';
@@ -92,7 +91,6 @@
 		}
 	});
 
-	let blinkState = $state(false);
 	let lastBlinkTime = $state(0);
 	let nextBlinkInterval = $state(2 + Math.random() * 5);
 
@@ -110,14 +108,14 @@
 		// but consider if they should be disabled if a VRMA controls expressions.
 		if (vrm.expressionManager && elapsedTime - lastBlinkTime > nextBlinkInterval) {
 			// Added !vrmaAction
-			blinkState = true;
+			// blinkState = true;
 			vrm.expressionManager.setValue(VRMExpressionPresetName.Blink, 1);
 
 			setTimeout(() => {
 				if (vrm && vrm.expressionManager) {
 					vrm.expressionManager.setValue(VRMExpressionPresetName.Blink, 0);
 				}
-				blinkState = false;
+				// blinkState = false;
 				lastBlinkTime = elapsedTime;
 				nextBlinkInterval = 2 + Math.random() * 5;
 			}, 150);

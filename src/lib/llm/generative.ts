@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI, type GenerativeModel } from '@google/generative-ai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { sleep } from '$lib/utils/sleep';
 
 const emotions = ['angry', 'happy', 'neutral', 'funny'];
@@ -23,7 +23,7 @@ const answerEmotionSchema = {
 		}
 	},
 	required: ['answer', 'emotion']
-};
+} as const;
 
 export async function generateStructuredOutput(
 	generativeAIInstance: GoogleGenerativeAI,
@@ -47,7 +47,7 @@ export async function generateStructuredOutput(
 		try {
 			const result = await model.generateContent(prompt);
 			return result.response.text();
-		} catch (error: any) {
+		} catch (error: unknown) {
 			lastError = error;
 			if (error && typeof error === 'object' && 'status' in error && error.status === 503) {
 				const backoffTime = Math.pow(2, attempt) * 5000;

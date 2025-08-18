@@ -25,7 +25,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	let requestData: TTSRequestBody;
 	try {
 		requestData = await request.json();
-	} catch (e) {
+	} catch {
 		throw error(400, "Invalid request body: Must be valid JSON with a 'text' property.");
 	}
 
@@ -107,11 +107,11 @@ export const POST: RequestHandler = async ({ request }) => {
 			audio_base64: responseData.audio_base64,
 			phonemes: phonemes
 		});
-	} catch (e: any) {
+	} catch (e: unknown) {
 		console.error('Error proxying TTS request to ElevenLabs:', e);
-		if (e.status && e.body) {
+		if (e && typeof e === 'object' && 'status' in e && 'body' in e) {
 			throw e;
 		}
-		throw error(500, `Internal server error: ${e.message || 'Unknown error'}`);
+		throw error(500, `Internal server error: ${e instanceof Error ? e.message : 'Unknown error'}`);
 	}
 };
