@@ -1,7 +1,6 @@
 import type { ChatMessage } from '$lib/types/chat';
 import { json } from '@sveltejs/kit';
-import { GoogleGenerativeAI, type Schema, SchemaType } from '@google/generative-ai';
-import { env } from '$env/dynamic/private';
+import { UnifiedLLMClient } from '$lib/llm/client';
 import { dev } from '$app/environment';
 // Note: Logging and error handling utilities available for future enhancement
 
@@ -9,10 +8,10 @@ import { dev } from '$app/environment';
 const SYSTEM_PROMPT =
 	'You are EMO, a character who is deeply introspective and sensitive. You often feel misunderstood and express yourself with a touch of melancholy and poetic flair. Respond to user inputs in a way that is consistent with your persona: thoughtful, a bit reserved, and with a hint of poetic sadness or depth. Keep your responses relatively concise for a live interaction, but let your emotions show.';
 
-const RESPONSE_SCHEMA_OBJECT: Schema = {
-	type: SchemaType.OBJECT,
+const RESPONSE_SCHEMA_OBJECT = {
+	type: 'object',
 	properties: {
-		reply: { type: SchemaType.STRING }
+		reply: { type: 'string' }
 	},
 	required: ['reply']
 };
@@ -22,28 +21,8 @@ const userRequestTimestamps = new Map<string, number[]>();
 const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
 const MAX_REQUESTS_PER_WINDOW = 10; // Max 10 messages per minute per IP
 
-// Initialize AI client lazily to avoid failing at module load time in CI
-function getModel() {
-	if (!env.GOOGLE_API_KEY) {
-		if (dev) console.error('[API Send] GOOGLE_API_KEY is not defined in environment variables.');
-		throw new Error(
-			'GOOGLE_API_KEY is not defined in environment variables. Server cannot start properly.'
-		);
-	}
-
-	const genAI = new GoogleGenerativeAI(env.GOOGLE_API_KEY);
-	const model = genAI.getGenerativeModel({
-		model: 'gemini-1.5-flash-latest', // Corrected model name
-		systemInstruction: SYSTEM_PROMPT,
-		generationConfig: {
-			responseMimeType: 'application/json',
-			responseSchema: RESPONSE_SCHEMA_OBJECT
-		}
-	});
-	if (dev)
-		console.log('[API Send] Google AI Model initialized with system prompt and response schema.');
-	return model;
-}
+if (dev)
+	console.log('[API Send] LLM Client will be initialized per request with configured provider.');
 
 export async function POST({
 	request,
@@ -106,21 +85,29 @@ export async function POST({
 
 	try {
 		if (dev) console.log('[API Send] Starting LLM chat for message ID:', userChatMessage.id);
-		const model = getModel();
-		const chat = model.startChat({
-			history: []
-		});
-		const result = await chat.sendMessage(userMessageContent.trim());
-		const llmResponse = result.response;
-		const responseText = llmResponse.text();
-		if (dev)
-			console.log(
-				'[API Send] LLM response received raw text:',
-				responseText.substring(0, 100) + '...'
-			);
+
+		const llmClient = new UnifiedLLMClient();
+		const messages = [
+			{ role: 'system' as const, content: SYSTEM_PROMPT },
+			{ role: 'user' as const, content: userMessageContent.trim() }
+		];
 
 		let avatarText = "I'm not sure what to say to that.";
+
+		// Try structured output first, fallback to regular chat
 		try {
+			const responseText = await llmClient.generateStructuredOutput(
+				SYSTEM_PROMPT,
+				userMessageContent.trim(),
+				RESPONSE_SCHEMA_OBJECT
+			);
+
+			if (dev)
+				console.log(
+					'[API Send] LLM response received raw text:',
+					responseText.substring(0, 100) + '...'
+				);
+
 			const parsedResponse = JSON.parse(responseText);
 			if (parsedResponse && parsedResponse.reply && typeof parsedResponse.reply === 'string') {
 				avatarText = parsedResponse.reply;
@@ -136,14 +123,15 @@ export async function POST({
 						responseText
 					);
 			}
-		} catch (parseError: unknown) {
+		} catch (e) {
+			// Fallback to regular chat if structured output fails
+			if (dev) console.log('[API Send] Structured output failed, falling back to regular chat');
+
+			const chatResponse = await llmClient.chat(messages);
+			avatarText = chatResponse.content;
+
 			if (dev)
-				console.error(
-					'[API Send] Failed to parse LLM JSON response:',
-					parseError,
-					'Raw response was:',
-					responseText
-				);
+				console.log('[API Send] Chat fallback response:', avatarText.substring(0, 50) + '...');
 		}
 
 		const avatarChatMessage: ChatMessage = {
@@ -177,11 +165,17 @@ export async function POST({
 			);
 		let errorMessage = "Sorry, I'm having a bit of trouble thinking right now.";
 		if (error instanceof Error && error.message && typeof error.message === 'string') {
-			if (error.message.includes('gemini') || error.message.includes('API key')) {
+			if (error.message.includes('API key') || error.message.includes('Google')) {
 				errorMessage =
 					'There seems to be an issue with my connection to my thoughts (AI service). Please try again later.';
 			} else if (error.message.includes('JSON')) {
 				errorMessage = "I received a thought that I couldn't quite understand (invalid format).";
+			} else if (error.message.includes('Unsupported provider')) {
+				errorMessage =
+					'My thinking mechanism is misconfigured. Please check the LLM provider settings.';
+			} else if (error.message.toLowerCase().includes('connection')) {
+				errorMessage =
+					'I cannot reach my local AI service. Please ensure Ollama or LM Studio is running if configured.';
 			}
 		}
 

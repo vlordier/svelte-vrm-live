@@ -9,7 +9,7 @@ A SvelteKit application for live-streaming 3D VRM avatars with AI-powered chat, 
 
 - Threlte/Three.js for 3D rendering
 - VRM avatar loading and animation with @pixiv/three-vrm
-- Google Generative AI for conversational responses
+- **Multi-LLM Support**: Google Generative AI, Ollama, and LM Studio
 - Text-to-speech with lip-sync
 - Chat interface
 - Mixamo animation integration
@@ -49,19 +49,58 @@ Phonemes mapped: A, AA, AH, AE, AO, AW, AY, E, EH, ER, EY, I, IH, IY, O, OH, OW,
    pnpm install
    ```
 
-### Environment Variables
+### Quick Setup
 
-Set the following environment variables (for example, create a `.env` file in the project root):
+1. **Copy the environment template:**
 
-```bash
-# Google Generative AI
-GOOGLE_API_KEY=your_google_api_key
+   ```bash
+   cp .env.example .env
+   ```
 
-# ElevenLabs Text-to-Speech
-ELEVENLABS_API_KEY=your_elevenlabs_api_key
-```
+2. **Choose your LLM provider** (auto-detected based on configuration):
 
-These keys are required for the chat and text-to-speech features.
+   | Provider          | Setup                | Cost           | Performance            | Privacy  |
+   | ----------------- | -------------------- | -------------- | ---------------------- | -------- |
+   | **Google Gemini** | ⭐⭐⭐ Easiest       | 💰 Pay-per-use | ⚡ Fast                | 🌐 Cloud |
+   | **Ollama**        | ⭐⭐ Technical       | 🆓 Free        | 🐌 Depends on hardware | 🔒 Local |
+   | **LM Studio**     | ⭐⭐⭐ User-friendly | 🆓 Free        | 🐌 Depends on hardware | 🔒 Local |
+
+   **✨ Just uncomment ONE option in your `.env` file:**
+
+   **Option A: Google Gemini**
+
+   ```bash
+   # Uncomment in .env:
+   GOOGLE_API_KEY=your_api_key_here  # Get from https://aistudio.google.com
+   ```
+
+   **Option B: Ollama**
+
+   ```bash
+   # Uncomment in .env:
+   OLLAMA_BASE_URL=http://localhost:11434
+   OLLAMA_MODEL=llama3.2:latest
+   # Then: brew install ollama && ollama pull llama3.2:latest
+   ```
+
+   **Option C: LM Studio** (default if nothing else configured)
+
+   ```bash
+   # Already enabled by default in .env, or uncomment:
+   LMSTUDIO_BASE_URL=http://localhost:1234
+   LMSTUDIO_MODEL=llama-3.2-1b-instruct
+   # Then: download from https://lmstudio.ai and start server
+   ```
+
+   **🎯 Auto-Detection:** The system automatically detects which provider to use based on your configuration. No need to set `LLM_PROVIDER` manually!
+
+3. **Test your configuration:**
+
+   ```bash
+   npm run test:llm
+   ```
+
+   This will verify your setup and provide specific help if needed.
 
 ## Developing
 
@@ -87,9 +126,26 @@ Preview:
 pnpm run preview
 ```
 
+## Architecture
+
+### LLM Integration
+
+The application features a unified LLM client (`src/lib/llm/client.ts`) that supports multiple providers:
+
+- **UnifiedLLMClient**: Abstraction layer supporting Google Gemini, Ollama, and LM Studio
+- **Automatic fallbacks**: Structured output with plain chat fallback
+- **Provider-specific optimizations**: Native structured output for Gemini, JSON prompting for local models
+- **Environment-based configuration**: Switch providers via configuration without code changes
+
+### API Endpoints
+
+- `/api/chat/send`: Chat with structured output and emotion detection
+- `/api/generate`: Generate responses with emotion analysis
+- `/api/tts`: Text-to-speech with phoneme timing
+
 ## Keywords
 
-svelte, sveltekit, threejs, threlte, vrm, 3d-avatar, ai-chat, text-to-speech, lipsync, phonemes, mixamo, animations, blockchain, solana, generative-ai, youtube-streaming
+svelte, sveltekit, threejs, threlte, vrm, 3d-avatar, ai-chat, text-to-speech, lipsync, phonemes, mixamo, animations, ollama, lmstudio, local-llm, generative-ai, youtube-streaming
 
 ## Contributing
 
