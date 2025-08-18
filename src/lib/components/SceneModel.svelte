@@ -6,7 +6,7 @@
 	import { PointLightHelper, SpotLightHelper } from 'three';
 	import type { Object3D, Light, Mesh, PointLight, SpotLight } from 'three';
 
-	const sceneModelPath = '/models/street_exterior_dead_end/scene.gltf';
+	let sceneModelPath = $state<string | null>(null); // Start with null, wait for API
 
 	const { scene } = useThrelte();
 	let sceneModel: Object3D | null = null;
@@ -62,41 +62,71 @@
 		};
 	});
 
-	onMount(() => {
-		async function loadSceneModel() {
-			const loader = new GLTFLoader();
-			try {
-				const gltf = await loader.loadAsync(sceneModelPath);
-				console.log('Loaded scene model structure:', gltf.scene); // Log the structure to check for lights
-				sceneModel = gltf.scene;
-				sceneModel.position.set(0, -0.5, 0);
-				sceneModel.scale.set(0.08, 0.08, 0.08);
+	async function loadSceneModel(path: string) {
+		const loader = new GLTFLoader();
+		try {
+			console.log('[SceneModel] Loading scene model from:', path);
 
-				// Traverse the loaded scene to check for and potentially adjust lights
-				sceneModel.traverse((child) => {
-					// Use type guards
-					if ((child as Light).isLight) {
-						console.log('Found light in GLTF:', child);
-						// Adjust intensity or enable shadows if needed, though adding scene lights is often better
-					}
-					// Use type guards
-					if ((child as Mesh).isMesh) {
-						// Ensure meshes cast and receive shadows - REMOVED
-					}
-				});
-
-				scene.add(sceneModel);
-			} catch (err) {
-				console.error('[SceneModel] Failed to load scene model:', err);
+			// Remove previous scene model if it exists
+			if (sceneModel && scene.children.includes(sceneModel)) {
+				scene.remove(sceneModel);
 			}
+
+			const gltf = await loader.loadAsync(path);
+			console.log('[SceneModel] Loaded scene model structure:', gltf.scene);
+			sceneModel = gltf.scene;
+			sceneModel.position.set(0, -0.5, 0);
+			sceneModel.scale.set(0.08, 0.08, 0.08);
+
+			// Traverse the loaded scene to check for and potentially adjust lights
+			sceneModel.traverse((child) => {
+				// Use type guards
+				if ((child as Light).isLight) {
+					console.log('[SceneModel] Found light in GLTF:', child);
+					// Adjust intensity or enable shadows if needed, though adding scene lights is often better
+				}
+				// Use type guards
+				if ((child as Mesh).isMesh) {
+					// Ensure meshes cast and receive shadows - REMOVED
+				}
+			});
+
+			scene.add(sceneModel);
+			console.log('[SceneModel] Scene model added to scene');
+		} catch (err) {
+			console.error('[SceneModel] Failed to load scene model from', path, ':', err);
 		}
+	}
 
-		loadSceneModel();
+	// Fetch scene configuration and react to changes
+	onMount(async () => {
+		try {
+			console.log('[SceneModel] Fetching scene config from API...');
+			const response = await fetch('/api/config');
+			const config = await response.json();
+			console.log('[SceneModel] Scene config received:', config);
+			sceneModelPath = config.sceneModel;
+			console.log('[SceneModel] Scene model path set to:', sceneModelPath);
+		} catch (error) {
+			console.error('[SceneModel] Failed to load scene config, using default:', error);
+			sceneModelPath = '/models/street_exterior_dead_end/scene.gltf';
+		}
+	});
 
+	// React to scene model path changes
+	$effect(() => {
+		if (sceneModelPath) {
+			console.log('[SceneModel] Scene model path changed, loading:', sceneModelPath);
+			loadSceneModel(sceneModelPath);
+		}
+	});
+
+	// Cleanup on component unmount
+	onMount(() => {
 		return () => {
 			if (sceneModel && scene.children.includes(sceneModel)) {
 				scene.remove(sceneModel);
-				// Consider disposing resources if necessary
+				console.log('[SceneModel] Scene model removed on cleanup');
 			}
 		};
 	});
