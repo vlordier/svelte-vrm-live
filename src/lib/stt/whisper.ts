@@ -1,4 +1,9 @@
 import { pipeline, type Pipeline } from '@huggingface/transformers';
+import {
+	ResilientOperationManager,
+	type CircuitBreakerConfig,
+	type RetryConfig
+} from './resilience';
 
 export interface WhisperConfig {
 	modelId: string;
@@ -10,6 +15,9 @@ export interface WhisperConfig {
 	strideLengthRight?: number;
 	language?: string;
 	task?: 'transcribe' | 'translate';
+	// Resilience configuration
+	circuitBreaker?: Partial<CircuitBreakerConfig>;
+	retry?: Partial<RetryConfig>;
 }
 
 export interface TranscriptionResult {
@@ -26,6 +34,7 @@ export class WhisperClient {
 	private transcriber: Pipeline | null = null;
 	private config: WhisperConfig;
 	private isInitialized = false;
+	private readonly resilientOps: ResilientOperationManager;
 
 	constructor(config?: Partial<WhisperConfig>) {
 		this.config = {
@@ -37,32 +46,65 @@ export class WhisperClient {
 			strideLengthLeft: config?.strideLengthLeft || 5,
 			strideLengthRight: config?.strideLengthRight || 5,
 			language: config?.language || 'en',
-			task: config?.task || 'transcribe'
+			task: config?.task || 'transcribe',
+			circuitBreaker: config?.circuitBreaker,
+			retry: config?.retry
 		};
+
+		// Initialize resilient operations manager
+		this.resilientOps = new ResilientOperationManager(
+			this.config.circuitBreaker,
+			this.config.retry
+		);
 	}
 
 	private async initialize(): Promise<void> {
 		if (this.isInitialized && this.transcriber) {
+			console.log('[Whisper] Already initialized, skipping...');
 			return;
 		}
 
-		try {
-			console.log(`[Whisper] Initializing ASR with model: ${this.config.modelId}`);
-			console.log(`[Whisper] Config: dtype=${this.config.dtype}, device=${this.config.device}`);
+		// Use resilient operations for initialization
+		await this.resilientOps.execute(
+			async () => {
+				console.log(`[Whisper] Initializing ASR with model: ${this.config.modelId}`, {
+					config: {
+						modelId: this.config.modelId,
+						dtype: this.config.dtype,
+						device: this.config.device
+					},
+					circuitState: this.resilientOps.getCircuitBreakerState(),
+					timestamp: new Date().toISOString()
+				});
 
-			this.transcriber = await pipeline('automatic-speech-recognition', this.config.modelId, {
-				dtype: this.config.dtype,
-				device: this.config.device
-			});
+				this.transcriber = await pipeline('automatic-speech-recognition', this.config.modelId, {
+					dtype: this.config.dtype,
+					device: this.config.device
+				});
 
-			this.isInitialized = true;
-			console.log('[Whisper] Automatic Speech Recognition initialized successfully');
-		} catch (error) {
-			console.error('[Whisper] Failed to initialize:', error);
-			throw new Error(
-				`Failed to initialize Whisper ASR: ${error instanceof Error ? error.message : 'Unknown error'}`
-			);
-		}
+				this.isInitialized = true;
+				console.log('[Whisper] Automatic Speech Recognition initialized successfully', {
+					modelId: this.config.modelId,
+					timestamp: new Date().toISOString()
+				});
+			},
+			'Whisper-Initialization',
+			(error) => {
+				// Determine if initialization errors are retryable
+				if (error instanceof Error) {
+					const message = error.message.toLowerCase();
+					// Retry on network/download issues, not on invalid config
+					return (
+						message.includes('network') ||
+						message.includes('download') ||
+						message.includes('fetch') ||
+						message.includes('timeout') ||
+						message.includes('connection')
+					);
+				}
+				return false;
+			}
+		);
 	}
 
 	async transcribe(audio: Float32Array): Promise<TranscriptionResult> {
@@ -72,44 +114,85 @@ export class WhisperClient {
 			throw new Error('Whisper transcriber not initialized');
 		}
 
-		try {
-			console.log(`[Whisper] Transcribing audio: ${audio.length} samples`);
+		// Use resilient operations for transcription
+		return this.resilientOps.execute(
+			async () => {
+				console.log(`[Whisper] Transcribing audio: ${audio.length} samples`, {
+					duration: (audio.length / 16000).toFixed(2) + 's',
+					config: {
+						language: this.config.language,
+						task: this.config.task,
+						returnTimestamps: this.config.returnTimestamps
+					},
+					circuitState: this.resilientOps.getCircuitBreakerState(),
+					timestamp: new Date().toISOString()
+				});
 
-			const startTime = performance.now();
+				const startTime = performance.now();
 
-			const result = await this.transcriber(audio, {
-				return_timestamps: this.config.returnTimestamps,
-				chunk_length_s: this.config.chunkLength,
-				stride_length_s: [this.config.strideLengthLeft, this.config.strideLengthRight],
-				language: this.config.language,
-				task: this.config.task
-			});
+				const result = await this.transcriber!(audio, {
+					return_timestamps: this.config.returnTimestamps,
+					chunk_length_s: this.config.chunkLength,
+					stride_length_s: [this.config.strideLengthLeft, this.config.strideLengthRight],
+					language: this.config.language,
+					task: this.config.task
+				});
 
-			const endTime = performance.now();
-			const processingTime = (endTime - startTime) / 1000;
+				const endTime = performance.now();
+				const processingTime = (endTime - startTime) / 1000;
 
-			console.log(`[Whisper] Transcription complete in ${processingTime.toFixed(2)}s`);
-			console.log(`[Whisper] Result: "${result.text}"`);
+				console.log(`[Whisper] Transcription complete`, {
+					processingTime: processingTime.toFixed(2) + 's',
+					resultLength: result.text?.length || 0,
+					resultPreview: result.text
+						? `"${result.text.substring(0, 50)}${result.text.length > 50 ? '...' : ''}"`
+						: 'empty',
+					timestamp: new Date().toISOString()
+				});
 
-			// Handle different result formats from transformers.js
-			const transcriptionResult: TranscriptionResult = {
-				text: result.text || '',
-				chunks: result.chunks || undefined,
-				language: this.config.language,
-				confidence: result.confidence || undefined
-			};
+				// Handle different result formats from transformers.js
+				const transcriptionResult: TranscriptionResult = {
+					text: result.text || '',
+					chunks: result.chunks || undefined,
+					language: this.config.language,
+					confidence: result.confidence || undefined
+				};
 
-			return transcriptionResult;
-		} catch (error) {
-			console.error('[Whisper] Transcription failed:', error);
-			throw new Error(
-				`Whisper transcription failed: ${error instanceof Error ? error.message : 'Unknown error'}`
-			);
-		}
+				return transcriptionResult;
+			},
+			'Whisper-Transcription',
+			(error) => {
+				// Determine if transcription errors are retryable
+				if (error instanceof Error) {
+					const message = error.message.toLowerCase();
+					// Retry on memory/resource issues, not on invalid audio
+					return (
+						message.includes('memory') ||
+						message.includes('resource') ||
+						message.includes('timeout') ||
+						message.includes('busy') ||
+						message.includes('unavailable')
+					);
+				}
+				return false;
+			}
+		);
 	}
 
 	getConfig(): WhisperConfig {
 		return { ...this.config };
+	}
+
+	getResilienceState() {
+		return {
+			circuitBreaker: this.resilientOps.getCircuitBreakerState(),
+			retryConfig: this.resilientOps.getRetryConfig()
+		};
+	}
+
+	resetCircuitBreaker(): void {
+		console.log('[Whisper] Manual circuit breaker reset requested');
+		this.resilientOps.resetCircuitBreaker();
 	}
 
 	updateConfig(newConfig: Partial<WhisperConfig>): void {
