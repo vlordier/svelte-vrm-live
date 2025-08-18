@@ -1,7 +1,7 @@
 import type { ChatMessage } from '$lib/types/chat';
 import { json } from '@sveltejs/kit';
 import { GoogleGenerativeAI, type Schema, SchemaType } from '@google/generative-ai';
-import { GOOGLE_API_KEY } from '$env/static/private';
+import { env } from '$env/dynamic/private';
 import { dev } from '$app/environment';
 // Note: Logging and error handling utilities available for future enhancement
 
@@ -22,24 +22,28 @@ const userRequestTimestamps = new Map<string, number[]>();
 const RATE_LIMIT_WINDOW_MS = 60000; // 1 minute
 const MAX_REQUESTS_PER_WINDOW = 10; // Max 10 messages per minute per IP
 
-if (!GOOGLE_API_KEY) {
-	if (dev) console.error('[API Send] GOOGLE_API_KEY is not defined in environment variables.');
-	throw new Error(
-		'GOOGLE_API_KEY is not defined in environment variables. Server cannot start properly.'
-	);
-}
-
-const genAI = new GoogleGenerativeAI(GOOGLE_API_KEY);
-const model = genAI.getGenerativeModel({
-	model: 'gemini-1.5-flash-latest', // Corrected model name
-	systemInstruction: SYSTEM_PROMPT,
-	generationConfig: {
-		responseMimeType: 'application/json',
-		responseSchema: RESPONSE_SCHEMA_OBJECT
+// Initialize AI client lazily to avoid failing at module load time in CI
+function getModel() {
+	if (!env.GOOGLE_API_KEY) {
+		if (dev) console.error('[API Send] GOOGLE_API_KEY is not defined in environment variables.');
+		throw new Error(
+			'GOOGLE_API_KEY is not defined in environment variables. Server cannot start properly.'
+		);
 	}
-});
-if (dev)
-	console.log('[API Send] Google AI Model initialized with system prompt and response schema.');
+
+	const genAI = new GoogleGenerativeAI(env.GOOGLE_API_KEY);
+	const model = genAI.getGenerativeModel({
+		model: 'gemini-1.5-flash-latest', // Corrected model name
+		systemInstruction: SYSTEM_PROMPT,
+		generationConfig: {
+			responseMimeType: 'application/json',
+			responseSchema: RESPONSE_SCHEMA_OBJECT
+		}
+	});
+	if (dev)
+		console.log('[API Send] Google AI Model initialized with system prompt and response schema.');
+	return model;
+}
 
 export async function POST({
 	request,
@@ -102,6 +106,7 @@ export async function POST({
 
 	try {
 		if (dev) console.log('[API Send] Starting LLM chat for message ID:', userChatMessage.id);
+		const model = getModel();
 		const chat = model.startChat({
 			history: []
 		});
