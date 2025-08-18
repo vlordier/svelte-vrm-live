@@ -24,7 +24,10 @@ export default [
 				AudioContext: 'readonly',
 				AudioBuffer: 'readonly',
 				Request: 'readonly',
-				process: 'readonly'
+				process: 'readonly',
+				Buffer: 'readonly',
+				window: 'readonly',
+				SpeechSynthesisUtterance: 'readonly'
 			}
 		},
 		plugins: {
