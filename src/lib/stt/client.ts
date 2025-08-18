@@ -1,11 +1,19 @@
 import { VADClient, type VADConfig, type VADCallbacks } from './vad';
 import { WhisperClient, type WhisperConfig, type TranscriptionResult } from './whisper';
+import {
+	ResilientOperationManager,
+	type CircuitBreakerConfig,
+	type RetryConfig
+} from './resilience';
 import { env } from '$env/dynamic/private';
 
 export interface STTConfig {
 	vad: VADConfig;
 	whisper: WhisperConfig;
 	autoStart?: boolean;
+	// Global resilience settings for the entire STT system
+	circuitBreaker?: Partial<CircuitBreakerConfig>;
+	retry?: Partial<RetryConfig>;
 }
 
 export interface STTCallbacks {
@@ -25,6 +33,9 @@ export class UnifiedSTTClient {
 	private callbacks: STTCallbacks;
 	private status: STTStatus = 'idle';
 	private isInitialized = false;
+	private readonly resilientOps: ResilientOperationManager;
+	private recoveryAttempts = 0;
+	private readonly maxRecoveryAttempts = 3;
 
 	constructor(config?: Partial<STTConfig>, callbacks: STTCallbacks = {}) {
 		this.config = {
@@ -44,7 +55,21 @@ export class UnifiedSTTClient {
 				task: (env.WHISPER_TASK as WhisperConfig['task']) || 'transcribe',
 				...config?.whisper
 			},
-			autoStart: config?.autoStart ?? false
+			autoStart: config?.autoStart ?? false,
+			circuitBreaker: {
+				failureThreshold: Number(env.STT_CIRCUIT_BREAKER_FAILURE_THRESHOLD) || 5,
+				resetTimeoutMs: Number(env.STT_CIRCUIT_BREAKER_RESET_TIMEOUT_MS) || 60000,
+				monitoringWindowMs: Number(env.STT_CIRCUIT_BREAKER_RESET_TIMEOUT_MS) * 5 || 300000,
+				...config?.circuitBreaker
+			},
+			retry: {
+				maxAttempts: Number(env.STT_RETRY_MAX_ATTEMPTS) || 3,
+				baseDelayMs: Number(env.STT_RETRY_BASE_DELAY_MS) || 1000,
+				maxDelayMs: Number(env.STT_RETRY_MAX_DELAY_MS) || 10000,
+				backoffMultiplier: 2,
+				jitterMs: 100,
+				...config?.retry
+			}
 		};
 
 		this.callbacks = callbacks;
@@ -79,8 +104,19 @@ export class UnifiedSTTClient {
 			}
 		};
 
+		// Initialize resilient operations for the entire STT system
+		this.resilientOps = new ResilientOperationManager(
+			this.config.circuitBreaker,
+			this.config.retry
+		);
+
 		this.vadClient = new VADClient(this.config.vad, vadCallbacks);
-		this.whisperClient = new WhisperClient(this.config.whisper);
+		this.whisperClient = new WhisperClient({
+			...this.config.whisper,
+			// Pass resilience config to Whisper client
+			circuitBreaker: this.config.circuitBreaker,
+			retry: this.config.retry
+		});
 	}
 
 	private setStatus(status: STTStatus): void {
@@ -130,16 +166,63 @@ export class UnifiedSTTClient {
 			return;
 		}
 
+		// Use resilient operations for starting
+		return this.resilientOps
+			.execute(
+				async () => {
+					await this.vadClient.start();
+					this.setStatus('listening');
+					this.recoveryAttempts = 0; // Reset on successful start
+					console.log('[STT] Started listening for speech', {
+						timestamp: new Date().toISOString()
+					});
+				},
+				'STT-Start',
+				(error) => {
+					// Most start errors are retryable (permissions might be temporary)
+					return true;
+				}
+			)
+			.catch(async (error) => {
+				console.error('[STT] Failed to start after all retry attempts:', error);
+				this.setStatus('error');
+				const errorObj = error instanceof Error ? error : new Error('Unknown start error');
+				this.callbacks.onError?.(errorObj);
+
+				// Attempt automatic recovery if we haven't exceeded max attempts
+				if (this.recoveryAttempts < this.maxRecoveryAttempts) {
+					await this.attemptRecovery();
+				}
+
+				throw errorObj;
+			});
+	}
+
+	private async attemptRecovery(): Promise<void> {
+		this.recoveryAttempts++;
+		console.log(
+			`[STT] Attempting automatic recovery (${this.recoveryAttempts}/${this.maxRecoveryAttempts})`,
+			{
+				timestamp: new Date().toISOString()
+			}
+		);
+
 		try {
-			await this.vadClient.start();
-			this.setStatus('listening');
-			console.log('[STT] Started listening for speech');
+			// Reset circuit breakers
+			this.resetCircuitBreakers();
+
+			// Destroy and reinitialize components
+			this.destroy();
+			await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait 2 seconds
+
+			// Try to reinitialize
+			await this.initialize();
+
+			console.log(`[STT] Recovery attempt ${this.recoveryAttempts} completed`, {
+				timestamp: new Date().toISOString()
+			});
 		} catch (error) {
-			console.error('[STT] Failed to start:', error);
-			this.setStatus('error');
-			const errorObj = error instanceof Error ? error : new Error('Unknown start error');
-			this.callbacks.onError?.(errorObj);
-			throw errorObj;
+			console.error(`[STT] Recovery attempt ${this.recoveryAttempts} failed:`, error);
 		}
 	}
 
@@ -169,8 +252,28 @@ export class UnifiedSTTClient {
 		return {
 			vad: { ...this.config.vad },
 			whisper: { ...this.config.whisper },
-			autoStart: this.config.autoStart
+			autoStart: this.config.autoStart,
+			circuitBreaker: this.config.circuitBreaker,
+			retry: this.config.retry
 		};
+	}
+
+	getResilienceState() {
+		return {
+			system: {
+				circuitBreaker: this.resilientOps.getCircuitBreakerState(),
+				retryConfig: this.resilientOps.getRetryConfig(),
+				recoveryAttempts: this.recoveryAttempts
+			},
+			whisper: this.whisperClient.getResilienceState()
+		};
+	}
+
+	resetCircuitBreakers(): void {
+		console.log('[STT] Resetting all circuit breakers');
+		this.resilientOps.resetCircuitBreaker();
+		this.whisperClient.resetCircuitBreaker();
+		this.recoveryAttempts = 0;
 	}
 
 	updateConfig(newConfig: Partial<STTConfig>): void {

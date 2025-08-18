@@ -140,6 +140,25 @@ console.log('   3. When user stops speaking, audio is sent to Whisper');
 console.log('   4. Whisper transcribes the audio segment');
 console.log('   5. Transcription result is returned');
 
+// Resilience features
+console.log('\n🛡️ Resilience & Error Recovery:');
+console.log('   • Circuit Breaker: Automatically stops operations when failures exceed threshold');
+console.log('   • Automatic Retry: Retries failed operations with exponential backoff');
+console.log('   • Smart Recovery: Distinguishes between retryable and permanent errors');
+console.log('   • Self-Healing: Automatically attempts to recover from failures');
+
+const circuitBreakerThreshold = process.env.STT_CIRCUIT_BREAKER_FAILURE_THRESHOLD || 5;
+const retryAttempts = process.env.STT_RETRY_MAX_ATTEMPTS || 3;
+const resetTimeout = process.env.STT_CIRCUIT_BREAKER_RESET_TIMEOUT_MS || 60000;
+
+console.log('\n🔧 Current Resilience Settings:');
+console.log(`   Circuit Breaker Threshold: ${circuitBreakerThreshold} failures`);
+console.log(`   Maximum Retry Attempts: ${retryAttempts}`);
+console.log(`   Circuit Reset Timeout: ${resetTimeout}ms (${resetTimeout / 1000}s)`);
+console.log(
+	'   💡 These settings ensure the system gracefully handles network issues, model loading failures, and temporary resource constraints'
+);
+
 // Setup instructions
 console.log('\n🚀 Quick Setup:');
 console.log('   1. Ensure HTTPS is enabled (required for microphone access)');
