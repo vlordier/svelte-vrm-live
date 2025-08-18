@@ -218,7 +218,7 @@ User request: ${prompt}`;
 			model: this.config.model,
 			generationConfig: {
 				responseMimeType: 'application/json',
-				responseSchema: schema,
+				responseSchema: schema as any, // eslint-disable-line @typescript-eslint/no-explicit-any
 				maxOutputTokens: 64000
 			},
 			systemInstruction

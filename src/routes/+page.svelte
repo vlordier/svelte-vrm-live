@@ -4,11 +4,22 @@
 	import type { VRM } from '@pixiv/three-vrm';
 	import Chat from '$lib/components/Chat.svelte';
 	import type { AnimationController } from '$lib/animation/AnimationController.svelte';
+	import { onMount } from 'svelte';
 
-	const avatarModelPath = '/models/punk.vrm'; // Ensure avatar.vrm is in static/models
-
+	let avatarModelPath = $state<string>('/models/punk.vrm'); // Default fallback
 	let vrmInstance = $state<VRM | null>(null);
 	let animationController = $state<AnimationController | null>(null);
+
+	onMount(async () => {
+		try {
+			const response = await fetch('/api/config');
+			const config = await response.json();
+			avatarModelPath = config.vrmModel;
+		} catch (error) {
+			console.error('[Page] Failed to load VRM config, using default:', error);
+			// Keep default avatarModelPath
+		}
+	});
 </script>
 
 <svelte:head>
