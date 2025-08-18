@@ -171,7 +171,7 @@ test.describe('API Integration in App', () => {
 		await page.goto('/');
 
 		// Simulate network disconnection
-		await page.setOfflineMode(true);
+		await page.route('**/api/**', (route) => route.abort());
 
 		const chatInput = page.locator('textarea[placeholder*="Type your message"]');
 		const sendButton = page.locator('button:has(svg)');
@@ -192,7 +192,7 @@ test.describe('API Integration in App', () => {
 		});
 
 		// Reconnect and test recovery
-		await page.setOfflineMode(false);
+		await page.unroute('**/api/**');
 		await chatInput.fill('Test reconnection');
 		await sendButton.click();
 

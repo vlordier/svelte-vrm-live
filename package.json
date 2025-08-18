@@ -76,9 +76,13 @@
 		"@sveltejs/adapter-cloudflare": "^7.0.5",
 		"@threlte/core": "^8.0.2",
 		"@threlte/extras": "^9.1.4",
+		"@types/franc": "^5.0.3",
 		"@types/node": "^22.15.17",
+		"cld3-asm": "^4.0.0",
 		"dotenv": "^16.5.0",
+		"franc": "^6.2.0",
 		"kokoro-js": "^1.2.1",
+		"langdetect": "^0.2.1",
 		"ollama": "^0.5.17",
 		"three": "^0.176.0"
 	},

@@ -227,8 +227,8 @@ test.describe('VRM Avatar Functionality', () => {
 			const canvas = document.querySelector('canvas');
 			if (canvas) {
 				const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-				if (gl && gl.getExtension('WEBGL_lose_context')) {
-					gl.getExtension('WEBGL_lose_context')?.loseContext();
+				if (gl && (gl as any).getExtension('WEBGL_lose_context')) {
+					(gl as any).getExtension('WEBGL_lose_context')?.loseContext();
 				}
 			}
 		});

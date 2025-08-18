@@ -50,12 +50,59 @@ export class KokoroTTSClient {
 	private isInitialized = false;
 
 	constructor(config?: Partial<KokoroTTSConfig>) {
+		// Auto-detect device based on environment
+		const defaultDevice = this.detectBestDevice(config?.device || env.KOKORO_DEVICE);
+
 		this.config = {
 			voice: (config?.voice || env.KOKORO_VOICE || 'af_bella') as KokoroVoice,
 			modelId: config?.modelId || env.KOKORO_MODEL_ID || 'onnx-community/Kokoro-82M-ONNX',
-			dtype: (config?.dtype || env.KOKORO_DTYPE || 'q4') as KokoroTTSConfig['dtype'],
-			device: (config?.device || env.KOKORO_DEVICE || 'wasm') as KokoroTTSConfig['device']
+			dtype: this.selectBestDtype(config?.dtype || env.KOKORO_DTYPE, defaultDevice),
+			device: defaultDevice
 		};
+
+		console.log(
+			`[KokoroTTS] Configuration: device=${this.config.device}, dtype=${this.config.dtype}, voice=${this.config.voice}`
+		);
+	}
+
+	private detectBestDevice(preferredDevice?: string): KokoroTTSConfig['device'] {
+		// In server-side environment, only CPU is supported
+		if (typeof window === 'undefined') {
+			console.log('[KokoroTTS] Server environment detected, using CPU device');
+			return 'cpu';
+		}
+
+		// In browser, prefer wasm if available, fallback to cpu
+		if (preferredDevice === 'webgpu' || preferredDevice === 'wasm' || preferredDevice === 'cpu') {
+			return preferredDevice as KokoroTTSConfig['device'];
+		}
+
+		// Default browser device
+		return 'wasm';
+	}
+
+	private selectBestDtype(
+		preferredDtype?: string,
+		device?: KokoroTTSConfig['device']
+	): KokoroTTSConfig['dtype'] {
+		// For CPU device, use fp32 for better stability
+		if (device === 'cpu') {
+			console.log('[KokoroTTS] Using fp32 dtype for CPU device to avoid corruption issues');
+			return 'fp32';
+		}
+
+		// For other devices, respect preference or default to q4
+		if (
+			preferredDtype === 'fp32' ||
+			preferredDtype === 'fp16' ||
+			preferredDtype === 'q8' ||
+			preferredDtype === 'q4' ||
+			preferredDtype === 'q4f16'
+		) {
+			return preferredDtype as KokoroTTSConfig['dtype'];
+		}
+
+		return 'q4';
 	}
 
 	private async initialize(): Promise<void> {
@@ -68,18 +115,41 @@ export class KokoroTTSClient {
 				`[KokoroTTS] Initializing with model: ${this.config.modelId}, dtype: ${this.config.dtype}, device: ${this.config.device}`
 			);
 
+			// Add progress logging for model download
+			const startTime = Date.now();
+			console.log('[KokoroTTS] Starting model download/initialization...');
+
 			this.tts = await KokoroTTS.from_pretrained(this.config.modelId, {
 				dtype: this.config.dtype,
-				device: this.config.device
+				device: this.config.device,
+				progress_callback: (progress: any) => {
+					const percentage = Math.round((progress.loaded / progress.total) * 100);
+					const fileName = progress.file || 'model files';
+					if (!isNaN(percentage) && percentage >= 0 && percentage <= 100) {
+						console.log(`[KokoroTTS] Downloading ${fileName}: ${percentage}%`);
+					}
+				}
 			});
 
+			const duration = Date.now() - startTime;
 			this.isInitialized = true;
-			console.log('[KokoroTTS] Initialization complete');
+			console.log(`[KokoroTTS] Initialization complete in ${duration}ms`);
 		} catch (error) {
 			console.error('[KokoroTTS] Failed to initialize:', error);
-			throw new Error(
-				`Failed to initialize Kokoro TTS: ${error instanceof Error ? error.message : 'Unknown error'}`
-			);
+
+			// Check if it's a network/download error
+			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+			if (
+				errorMessage.includes('fetch') ||
+				errorMessage.includes('network') ||
+				errorMessage.includes('download')
+			) {
+				throw new Error(
+					`Failed to download Kokoro TTS model. Please check your internet connection. ${errorMessage}`
+				);
+			}
+
+			throw new Error(`Failed to initialize Kokoro TTS: ${errorMessage}`);
 		}
 	}
 
@@ -92,35 +162,95 @@ export class KokoroTTSClient {
 
 		const selectedVoice = voice || this.config.voice;
 
+		// Validate voice exists
+		const availableVoices = KokoroTTSClient.getAvailableVoices();
+		if (!availableVoices.includes(selectedVoice as KokoroVoice)) {
+			console.warn(`[KokoroTTS] Voice '${selectedVoice}' not available, using 'af_bella'`);
+		}
+
 		try {
 			console.log(`[KokoroTTS] Synthesizing text with voice: ${selectedVoice}`);
 			console.log(`[KokoroTTS] Text: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
+			console.log(
+				`[KokoroTTS] Available voices in model:`,
+				this.tts?.voices ? Object.keys(this.tts.voices) : 'N/A'
+			);
 
 			const audio = await this.tts.generate(text, {
 				voice: selectedVoice as keyof typeof this.tts.voices
 			});
 
-			// RawAudio from transformers.js
-			const audioData = (audio as { data: Float32Array }).data || (audio as Float32Array);
-			const sampleRate =
-				(audio as { sampling_rate?: number; sample_rate?: number }).sampling_rate ||
-				(audio as { sampling_rate?: number; sample_rate?: number }).sample_rate ||
-				22050;
+			console.log(`[KokoroTTS] Generated audio object:`, typeof audio, audio?.constructor?.name);
+
+			// Handle RawAudio object from transformers.js/kokoro-js
+			let audioData: Float32Array;
+			let sampleRate: number;
+
+			if (audio && typeof audio === 'object') {
+				// Try different property names for RawAudio
+				const audioObj = audio as unknown as Record<string, unknown>;
+				audioData =
+					(audioObj.data as Float32Array) ||
+					(audioObj.audio as Float32Array) ||
+					(audioObj.samples as Float32Array) ||
+					(audio as unknown as Float32Array);
+				sampleRate =
+					(audioObj.sampling_rate as number) ||
+					(audioObj.sample_rate as number) ||
+					(audioObj.sampleRate as number) ||
+					24000;
+
+				console.log(`[KokoroTTS] Raw audio properties:`, Object.keys(audio));
+				console.log(
+					`[KokoroTTS] Audio data found:`,
+					typeof audioData,
+					audioData?.length,
+					audioData?.constructor?.name
+				);
+				console.log(`[KokoroTTS] Sample rate found: ${sampleRate}`);
+
+				// If audioData is still undefined, try to access the audio directly
+				if (!audioData) {
+					// Maybe the audio IS the Float32Array directly
+					if (audio instanceof Float32Array) {
+						audioData = audio;
+					} else {
+						// Log all properties to understand the structure
+						console.error(`[KokoroTTS] Could not find audio data in RawAudio object:`, audio);
+						throw new Error('No audio data found in RawAudio object');
+					}
+				}
+			} else {
+				throw new Error(`Unexpected audio response type: ${typeof audio}`);
+			}
+
+			if (!audioData || audioData.length === 0) {
+				throw new Error('No audio data generated - empty result from Kokoro TTS');
+			}
 
 			// Convert Float32Array to ArrayBuffer (PCM format)
-			const audioBuffer = new ArrayBuffer(audioData.byteLength);
-			const view = new Uint8Array(audioBuffer);
-			const sourceView = new Uint8Array(
-				audioData.buffer,
-				audioData.byteOffset,
-				audioData.byteLength
-			);
-			view.set(sourceView);
+			let audioBuffer: ArrayBuffer;
+
+			if (audioData instanceof Float32Array) {
+				// Convert Float32Array to ArrayBuffer properly
+				audioBuffer = (audioData.buffer as ArrayBuffer).slice(
+					audioData.byteOffset,
+					audioData.byteOffset + audioData.byteLength
+				);
+			} else {
+				throw new Error(
+					`Audio data is not Float32Array: ${typeof audioData}, constructor: ${(audioData as any)?.constructor?.name}`
+				);
+			}
+
+			// Calculate duration properly (audioData.length is number of samples)
+			const durationSeconds = audioData.length / sampleRate;
+			const validDuration = isNaN(durationSeconds) ? 0 : durationSeconds;
 
 			const response: TTSResponse = {
 				audio: audioBuffer,
 				sampleRate,
-				duration: audioData.length / sampleRate
+				duration: validDuration
 			};
 
 			console.log(

@@ -2,6 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
 import { UnifiedTTSClient, type TTSProvider } from '$lib/tts/client';
+import { TTSCache } from '$lib/tts/cache';
 
 interface TTSRequestBody {
 	text: string;
@@ -35,6 +36,33 @@ export const POST: RequestHandler = async ({ request }) => {
 		return handleElevenLabsTTS(text);
 	}
 
+	// Check for cached welcome message first
+	const welcomeTexts = [
+		"Well hello there... First time here? What's your name? Tell me what brings you here?",
+		'Well hello there', // Partial matches
+		'hello there'
+	];
+
+	const isWelcomeMessage = welcomeTexts.some((welcomeText) =>
+		text.toLowerCase().includes(welcomeText.toLowerCase())
+	);
+
+	if (isWelcomeMessage) {
+		const cached = TTSCache.getCachedWelcomeMessage(text, voice || 'default', ttsProvider);
+		if (cached) {
+			console.log('[TTS API] Using cached welcome message');
+			return json({
+				audio_base64: cached.audioBase64,
+				sample_rate: cached.sampleRate,
+				duration: cached.duration,
+				provider: cached.provider,
+				voice: cached.voice,
+				phonemes: [],
+				cached: true
+			});
+		}
+	}
+
 	// Use new unified TTS client
 	try {
 		const ttsClient = new UnifiedTTSClient({
@@ -52,6 +80,18 @@ export const POST: RequestHandler = async ({ request }) => {
 			`[TTS API] Generated audio: ${base64Audio.length} chars, duration: ${result.duration.toFixed(2)}s`
 		);
 
+		// Cache welcome message for future use
+		if (isWelcomeMessage && base64Audio.length > 0) {
+			TTSCache.cacheWelcomeMessage(
+				text,
+				voice || 'default',
+				ttsProvider,
+				base64Audio,
+				result.sampleRate,
+				result.duration
+			);
+		}
+
 		return json({
 			audio_base64: base64Audio,
 			sample_rate: result.sampleRate,
@@ -59,7 +99,8 @@ export const POST: RequestHandler = async ({ request }) => {
 			provider: ttsProvider,
 			voice: voice || 'default',
 			// Local TTS doesn't provide phoneme alignment yet
-			phonemes: []
+			phonemes: [],
+			cached: false
 		});
 	} catch (e: unknown) {
 		console.error(`[TTS API] Error with ${ttsProvider} provider:`, e);
