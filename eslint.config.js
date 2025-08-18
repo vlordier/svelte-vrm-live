@@ -67,6 +67,7 @@ export default [
 			'*.d.ts',
 			'vite.config.ts',
 			'vitest.config.ts',
+			'playwright.config.ts',
 			'tailwind.config.ts',
 			'static/**/*',
 			'**/*.svelte.ts'
@@ -88,6 +89,20 @@ export default [
 		},
 		rules: {
 			'@typescript-eslint/no-explicit-any': 'off' // Allow any in tests for mocking
+		}
+	},
+	{
+		files: ['tests/e2e/**/*.{js,ts}'],
+		languageOptions: {
+			globals: {
+				window: 'readonly',
+				document: 'readonly',
+				console: 'readonly'
+			}
+		},
+		rules: {
+			'@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+			'@typescript-eslint/no-explicit-any': 'off'
 		}
 	}
 ];
