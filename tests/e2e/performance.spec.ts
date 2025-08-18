@@ -50,14 +50,10 @@ test.describe('Performance and Accessibility Tests', () => {
 
 		// Test memory usage
 		const memoryInfo = await page.evaluate(() => {
-			// @ts-expect-error - accessing memory API
 			return (performance as any).memory
 				? {
-						// @ts-expect-error - accessing memory API
 						usedJSHeapSize: (performance as any).memory.usedJSHeapSize,
-						// @ts-expect-error - accessing memory API
 						totalJSHeapSize: (performance as any).memory.totalJSHeapSize,
-						// @ts-expect-error - accessing memory API
 						jsHeapSizeLimit: (performance as any).memory.jsHeapSizeLimit
 					}
 				: null;

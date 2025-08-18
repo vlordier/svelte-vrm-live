@@ -63,7 +63,8 @@ test.describe('Browser Compatibility Tests', () => {
 						localStorage: typeof localStorage !== 'undefined',
 						crypto: typeof crypto !== 'undefined',
 						audioContext:
-							typeof AudioContext !== 'undefined' || typeof webkitAudioContext !== 'undefined'
+							typeof AudioContext !== 'undefined' ||
+							typeof (window as any).webkitAudioContext !== 'undefined'
 					};
 				});
 
@@ -181,7 +182,11 @@ test.describe('Browser Compatibility Tests', () => {
 			// Mock WebGL context creation failure
 			await page.addInitScript(() => {
 				const originalGetContext = HTMLCanvasElement.prototype.getContext;
-				HTMLCanvasElement.prototype.getContext = function (contextType, ...args) {
+				(HTMLCanvasElement.prototype.getContext as any) = function (
+					this: HTMLCanvasElement,
+					contextType: string,
+					...args: any[]
+				) {
 					if (contextType === 'webgl' || contextType === 'experimental-webgl') {
 						return null; // Simulate WebGL not available
 					}
