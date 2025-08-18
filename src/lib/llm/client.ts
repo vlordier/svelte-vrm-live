@@ -161,7 +161,7 @@ export class UnifiedLLMClient {
 				});
 				break;
 			case 'lmstudio':
-				this.lmstudioClient = new LMStudioClient();
+				this.lmstudioClient = new LMStudioClient({ baseUrl: this.config.baseUrl });
 				break;
 			default:
 				throw new Error(`Unsupported provider: ${this.config.provider}`);

@@ -123,7 +123,7 @@ export async function POST({
 						responseText
 					);
 			}
-		} catch {
+		} catch (e) {
 			// Fallback to regular chat if structured output fails
 			if (dev) console.log('[API Send] Structured output failed, falling back to regular chat');
 
