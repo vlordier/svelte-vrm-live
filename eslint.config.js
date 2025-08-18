@@ -97,11 +97,17 @@ export default [
 			globals: {
 				window: 'readonly',
 				document: 'readonly',
-				console: 'readonly'
+				console: 'readonly',
+				navigator: 'readonly',
+				performance: 'readonly',
+				PerformanceObserver: 'readonly',
+				CSS: 'readonly',
+				HTMLCanvasElement: 'readonly',
+				Buffer: 'readonly'
 			}
 		},
 		rules: {
-			'@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+			'@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_|^chatContainer$' }],
 			'@typescript-eslint/no-explicit-any': 'off'
 		}
 	}
