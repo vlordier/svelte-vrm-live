@@ -81,7 +81,7 @@ export async function POST({
 			if (dev) console.warn('[API Send] Invalid message content in request.', requestData);
 			return json({ error: 'Invalid message content.' }, { status: 400 });
 		}
-	} catch (error) {
+	} catch (error: unknown) {
 		if (dev) console.error('[API Send] Error parsing request body:', error);
 		return json({ error: 'Invalid request body.' }, { status: 400 });
 	}
@@ -131,7 +131,7 @@ export async function POST({
 						responseText
 					);
 			}
-		} catch (parseError) {
+		} catch (parseError: unknown) {
 			if (dev)
 				console.error(
 					'[API Send] Failed to parse LLM JSON response:',

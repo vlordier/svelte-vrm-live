@@ -25,7 +25,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	let requestData: TTSRequestBody;
 	try {
 		requestData = await request.json();
-	} catch {
+	} catch (err: unknown) {
 		throw error(400, "Invalid request body: Must be valid JSON with a 'text' property.");
 	}
 
