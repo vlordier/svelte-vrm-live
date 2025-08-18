@@ -20,7 +20,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	let requestData: GenerateRequestBody;
 	try {
 		requestData = await request.json();
-	} catch (err: unknown) {
+	} catch {
 		throw error(400, 'Invalid request body: Must be valid JSON.');
 	}
 

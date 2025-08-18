@@ -29,7 +29,7 @@ export async function generateStructuredOutput(
 	generativeAIInstance: GoogleGenerativeAI,
 	systemInstruction: string,
 	prompt: string,
-	schema: any,
+	schema: any, // eslint-disable-line @typescript-eslint/no-explicit-any
 	maxRetries = 10
 ): Promise<string> {
 	const model = generativeAIInstance.getGenerativeModel({
