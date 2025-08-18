@@ -36,11 +36,14 @@ jobs:
       - name: Check for vulnerable dependencies
         run: |
           echo "Checking for high/critical vulnerabilities..."
-          npm audit --audit-level=high --format=json > audit-results.json || echo "Audit completed"
+          npm audit --audit-level=high --json > audit-results.json 2>/dev/null || echo "Audit completed"
 
-          # Check if there are any high/critical vulnerabilities
-          HIGH_CRITICAL=$(npm audit --audit-level=high --format=json | grep -o '"high":[0-9]*' | cut -d':' -f2 || echo "0")
-          CRITICAL=$(npm audit --audit-level=high --format=json | grep -o '"critical":[0-9]*' | cut -d':' -f2 || echo "0")
+          # Check if there are any high/critical vulnerabilities using correct JSON structure
+          HIGH_CRITICAL=$(npm audit --audit-level=high --json 2>/dev/null | grep -o '"high": [0-9]*' | grep -o '[0-9]*' || echo "0")
+          CRITICAL=$(npm audit --audit-level=high --json 2>/dev/null | grep -o '"critical": [0-9]*' | grep -o '[0-9]*' || echo "0")
+
+          echo "High vulnerabilities found: $HIGH_CRITICAL"
+          echo "Critical vulnerabilities found: $CRITICAL"
 
           if [ "$HIGH_CRITICAL" != "0" ] || [ "$CRITICAL" != "0" ]; then
             echo "❌ High or critical vulnerabilities found!"
