@@ -70,9 +70,11 @@
 	},
 	"dependencies": {
 		"@google/generative-ai": "^0.24.1",
+		"@huggingface/transformers": "^3.7.2",
 		"@lmstudio/sdk": "^1.5.0",
 		"@pixiv/three-vrm": "^3.4.0",
 		"@pixiv/three-vrm-animation": "^3.4.0",
+		"@ricky0123/vad-web": "^0.0.24",
 		"@sveltejs/adapter-cloudflare": "^7.0.5",
 		"@threlte/core": "^8.0.2",
 		"@threlte/extras": "^9.1.4",

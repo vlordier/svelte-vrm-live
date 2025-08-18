@@ -27,6 +27,8 @@ export default [
 				process: 'readonly',
 				Buffer: 'readonly',
 				window: 'readonly',
+				navigator: 'readonly',
+				performance: 'readonly',
 				SpeechSynthesisUtterance: 'readonly'
 			}
 		},
