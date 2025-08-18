@@ -1,33 +1,25 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { generateStructuredOutput, generateAnswerWithEmotion } from './generative';
+import { UnifiedLLMClient } from './client';
 
-// Mock the GoogleGenerativeAI
-vi.mock('@google/generative-ai', () => ({
-	GoogleGenerativeAI: vi.fn()
-}));
-
-// Mock the sleep function to avoid timeouts
-vi.mock('$lib/utils/sleep', () => ({
-	sleep: vi.fn().mockResolvedValue(undefined)
+// Mock the UnifiedLLMClient
+vi.mock('./client', () => ({
+	UnifiedLLMClient: vi.fn()
 }));
 
 describe('Generative AI Functions', () => {
-	let mockGenerativeAI: any;
-	let mockModel: any;
+	let mockLLMClient: any;
 
 	beforeEach(() => {
 		vi.clearAllMocks();
 
-		mockModel = {
-			generateContent: vi.fn()
+		mockLLMClient = {
+			generateStructuredOutput: vi.fn(),
+			generateText: vi.fn(),
+			chat: vi.fn()
 		};
 
-		mockGenerativeAI = {
-			getGenerativeModel: vi.fn().mockReturnValue(mockModel)
-		};
-
-		(GoogleGenerativeAI as any).mockImplementation(() => mockGenerativeAI);
+		(UnifiedLLMClient as any).mockImplementation(() => mockLLMClient);
 	});
 
 	describe('generateStructuredOutput', () => {
@@ -38,159 +30,123 @@ describe('Generative AI Functions', () => {
 			}
 		};
 
-		it('should generate content successfully on first attempt', async () => {
-			const mockResponse = {
-				response: {
-					text: () => '{"answer": "test response"}'
-				}
-			};
-			mockModel.generateContent.mockResolvedValue(mockResponse);
+		it('should generate content successfully', async () => {
+			mockLLMClient.generateStructuredOutput.mockResolvedValue('{"answer": "test response"}');
 
 			const result = await generateStructuredOutput(
-				mockGenerativeAI,
+				mockLLMClient,
 				'system instruction',
 				'test prompt',
 				mockSchema
 			);
 
 			expect(result).toBe('{"answer": "test response"}');
-			expect(mockGenerativeAI.getGenerativeModel).toHaveBeenCalledWith({
-				model: 'gemini-2.0-flash',
-				generationConfig: {
-					responseMimeType: 'application/json',
-					responseSchema: mockSchema,
-					maxOutputTokens: 64000
-				},
-				systemInstruction: 'system instruction'
-			});
-			expect(mockModel.generateContent).toHaveBeenCalledWith('test prompt');
+			expect(mockLLMClient.generateStructuredOutput).toHaveBeenCalledWith(
+				'system instruction',
+				'test prompt',
+				mockSchema,
+				10
+			);
 		});
 
-		it('should retry on 503 errors with exponential backoff', async () => {
-			const error503 = { status: 503, message: 'Service unavailable' };
-			const mockResponse = {
-				response: {
-					text: () => '{"answer": "success after retry"}'
-				}
-			};
+		it('should pass maxRetries parameter', async () => {
+			mockLLMClient.generateStructuredOutput.mockResolvedValue('{"answer": "test response"}');
 
-			mockModel.generateContent
-				.mockRejectedValueOnce(error503)
-				.mockRejectedValueOnce(error503)
-				.mockResolvedValueOnce(mockResponse);
-
-			const result = await generateStructuredOutput(
-				mockGenerativeAI,
+			await generateStructuredOutput(
+				mockLLMClient,
 				'system instruction',
 				'test prompt',
 				mockSchema,
 				5
 			);
 
-			expect(result).toBe('{"answer": "success after retry"}');
-			expect(mockModel.generateContent).toHaveBeenCalledTimes(3);
+			expect(mockLLMClient.generateStructuredOutput).toHaveBeenCalledWith(
+				'system instruction',
+				'test prompt',
+				mockSchema,
+				5
+			);
 		});
 
-		it('should throw error after max retries', async () => {
-			const error = new Error('Persistent error');
-			mockModel.generateContent.mockRejectedValue(error);
+		it('should throw error if client throws', async () => {
+			const error = new Error('Client error');
+			mockLLMClient.generateStructuredOutput.mockRejectedValue(error);
 
 			await expect(
-				generateStructuredOutput(
-					mockGenerativeAI,
-					'system instruction',
-					'test prompt',
-					mockSchema,
-					1
-				)
-			).rejects.toThrow('Persistent error');
-
-			expect(mockModel.generateContent).toHaveBeenCalledTimes(1);
-		});
-
-		it('should not retry on non-503 errors', async () => {
-			const error400 = { status: 400, message: 'Bad request' };
-			mockModel.generateContent.mockRejectedValue(error400);
-
-			await expect(
-				generateStructuredOutput(
-					mockGenerativeAI,
-					'system instruction',
-					'test prompt',
-					mockSchema,
-					3
-				)
-			).rejects.toEqual(error400);
-
-			expect(mockModel.generateContent).toHaveBeenCalledTimes(1);
+				generateStructuredOutput(mockLLMClient, 'system instruction', 'test prompt', mockSchema, 1)
+			).rejects.toThrow('Client error');
 		});
 	});
 
 	describe('generateAnswerWithEmotion', () => {
 		it('should generate answer with emotion successfully', async () => {
-			const mockResponse = {
-				response: {
-					text: () => '{"answer": "I am happy!", "emotion": "happy"}'
-				}
-			};
-			mockModel.generateContent.mockResolvedValue(mockResponse);
+			mockLLMClient.generateStructuredOutput.mockResolvedValue(
+				'{"answer": "I am happy!", "emotion": "happy"}'
+			);
 
 			const result = await generateAnswerWithEmotion(
-				mockGenerativeAI,
+				mockLLMClient,
 				'system instruction',
 				'tell me a joke'
 			);
 
 			expect(result).toEqual({ answer: 'I am happy!', emotion: 'happy' });
-			expect(mockGenerativeAI.getGenerativeModel).toHaveBeenCalled();
+			expect(mockLLMClient.generateStructuredOutput).toHaveBeenCalledWith(
+				expect.stringContaining('system instruction'),
+				'tell me a joke',
+				expect.objectContaining({
+					type: 'object',
+					properties: expect.objectContaining({
+						answer: expect.objectContaining({
+							type: 'string',
+							description: 'The textual answer to the prompt.'
+						}),
+						emotion: expect.objectContaining({
+							type: 'string',
+							enum: ['angry', 'happy', 'neutral', 'funny']
+						})
+					}),
+					required: ['answer', 'emotion']
+				}),
+				10
+			);
 		});
 
 		it('should handle malformed JSON response', async () => {
-			const mockResponse = {
-				response: {
-					text: () => 'invalid json'
-				}
-			};
-			mockModel.generateContent.mockResolvedValue(mockResponse);
+			mockLLMClient.generateStructuredOutput.mockResolvedValue('invalid json');
 
 			await expect(
-				generateAnswerWithEmotion(mockGenerativeAI, 'system instruction', 'test prompt')
+				generateAnswerWithEmotion(mockLLMClient, 'system instruction', 'test prompt')
 			).rejects.toThrow();
 		});
 
-		it('should use correct schema for emotion detection', async () => {
-			const mockResponse = {
-				response: {
-					text: () => '{"answer": "test", "emotion": "neutral"}'
-				}
-			};
-			mockModel.generateContent.mockResolvedValue(mockResponse);
+		it('should modify system instruction for emotion detection', async () => {
+			mockLLMClient.generateStructuredOutput.mockResolvedValue(
+				'{"answer": "test", "emotion": "neutral"}'
+			);
 
-			await generateAnswerWithEmotion(mockGenerativeAI, 'system instruction', 'test prompt');
+			await generateAnswerWithEmotion(mockLLMClient, 'system instruction', 'test prompt');
 
-			const expectedSchema = {
-				type: 'object',
-				properties: {
-					answer: {
-						type: 'string',
-						description: 'The textual answer to the prompt.'
-					},
-					emotion: {
-						type: 'string',
-						enum: ['angry', 'happy', 'neutral', 'funny'],
-						description:
-							'The dominant emotion conveyed in the answer (angry, happy, neutral, funny).'
-					}
-				},
-				required: ['answer', 'emotion']
-			};
+			expect(mockLLMClient.generateStructuredOutput).toHaveBeenCalledWith(
+				expect.stringContaining('When determining the emotion for your answer'),
+				'test prompt',
+				expect.any(Object),
+				10
+			);
+		});
 
-			expect(mockGenerativeAI.getGenerativeModel).toHaveBeenCalledWith(
-				expect.objectContaining({
-					generationConfig: expect.objectContaining({
-						responseSchema: expectedSchema
-					})
-				})
+		it('should pass maxRetries parameter', async () => {
+			mockLLMClient.generateStructuredOutput.mockResolvedValue(
+				'{"answer": "test", "emotion": "neutral"}'
+			);
+
+			await generateAnswerWithEmotion(mockLLMClient, 'system instruction', 'test prompt', 5);
+
+			expect(mockLLMClient.generateStructuredOutput).toHaveBeenCalledWith(
+				expect.any(String),
+				'test prompt',
+				expect.any(Object),
+				5
 			);
 		});
 	});

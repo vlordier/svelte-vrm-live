@@ -23,7 +23,8 @@ export default [
 				atob: 'readonly',
 				AudioContext: 'readonly',
 				AudioBuffer: 'readonly',
-				Request: 'readonly'
+				Request: 'readonly',
+				process: 'readonly'
 			}
 		},
 		plugins: {
@@ -109,6 +110,14 @@ export default [
 		rules: {
 			'@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_|^chatContainer$' }],
 			'@typescript-eslint/no-explicit-any': 'off'
+		}
+	},
+	{
+		files: ['scripts/**/*.{js,ts}'],
+		languageOptions: {
+			globals: {
+				process: 'readonly'
+			}
 		}
 	}
 ];
