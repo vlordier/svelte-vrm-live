@@ -20,7 +20,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	let requestData: GenerateRequestBody;
 	try {
 		requestData = await request.json();
-	} catch (e) {
+	} catch {
 		throw error(400, 'Invalid request body: Must be valid JSON.');
 	}
 
@@ -40,9 +40,12 @@ export const POST: RequestHandler = async ({ request }) => {
 		const result = await generateAnswerWithEmotion(genAIInstance, systemInstruction, prompt);
 		console.log('Generated answer with emotion:', result);
 		return json(result);
-	} catch (e: any) {
+	} catch (e: unknown) {
 		console.error('Error generating structured output:', e);
 		// Provide a more generic error to the client for security
-		throw error(500, `Failed to generate content: ${e.message || 'Internal Server Error'}`);
+		throw error(
+			500,
+			`Failed to generate content: ${e instanceof Error ? e.message : 'Internal Server Error'}`
+		);
 	}
 };

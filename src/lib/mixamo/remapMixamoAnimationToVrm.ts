@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { mixamoVRMRigMap } from './vrmRigMap';
+import type { VRM, VRMHumanBoneName } from '@pixiv/three-vrm';
 
-export function remapMixamoAnimationToVrm(vrm: any, asset: any) {
+export function remapMixamoAnimationToVrm(vrm: VRM, asset: THREE.Group) {
 	const clip = THREE.AnimationClip.findByName(asset.animations, 'mixamo.com').clone(); // extract the AnimationClip
 
-	const tracks: any[] = []; // KeyframeTracks compatible with VRM will be added here
+	const tracks: THREE.KeyframeTrack[] = []; // KeyframeTracks compatible with VRM will be added here
 
 	const restRotationInverse = new THREE.Quaternion();
 	const parentRestWorldRotation = new THREE.Quaternion();
@@ -12,8 +13,12 @@ export function remapMixamoAnimationToVrm(vrm: any, asset: any) {
 	const _vec3 = new THREE.Vector3();
 
 	// Adjust with reference to hips height.
-	const motionHipsHeight = asset.getObjectByName('mixamorigHips').position.y;
-	const vrmHipsY = vrm.humanoid?.getNormalizedBoneNode('hips').getWorldPosition(_vec3).y;
+	const hipsObject = asset.getObjectByName('mixamorigHips');
+	if (!hipsObject) throw new Error('mixamorigHips not found in asset');
+	const motionHipsHeight = hipsObject.position.y;
+	const vrmHipsNode = vrm.humanoid?.getNormalizedBoneNode('hips');
+	if (!vrmHipsNode) throw new Error('VRM hips bone not found');
+	const vrmHipsY = vrmHipsNode.getWorldPosition(_vec3).y;
 	const vrmRootY = vrm.scene.getWorldPosition(_vec3).y;
 	const vrmHipsHeight = Math.abs(vrmHipsY - vrmRootY);
 	const hipsPositionScale = vrmHipsHeight / motionHipsHeight;
@@ -23,15 +28,18 @@ export function remapMixamoAnimationToVrm(vrm: any, asset: any) {
 		const trackSplitted = track.name.split('.');
 		const mixamoRigName = trackSplitted[0];
 		const vrmBoneName = mixamoVRMRigMap[mixamoRigName as keyof typeof mixamoVRMRigMap];
-		const vrmNodeName = vrm.humanoid?.getNormalizedBoneNode(vrmBoneName)?.name;
+		const vrmNode = vrm.humanoid?.getNormalizedBoneNode(vrmBoneName as VRMHumanBoneName);
+		const vrmNodeName = vrmNode?.name;
 		const mixamoRigNode = asset.getObjectByName(mixamoRigName);
 
-		if (vrmNodeName != null) {
+		if (vrmNodeName != null && mixamoRigNode) {
 			const propertyName = trackSplitted[1];
 
 			// Store rotations of rest-pose.
 			mixamoRigNode.getWorldQuaternion(restRotationInverse).invert();
-			mixamoRigNode.parent.getWorldQuaternion(parentRestWorldRotation);
+			if (mixamoRigNode.parent) {
+				mixamoRigNode.parent.getWorldQuaternion(parentRestWorldRotation);
+			}
 
 			if (track instanceof THREE.QuaternionKeyframeTrack) {
 				// Retarget rotation of mixamoRig to NormalizedBone.

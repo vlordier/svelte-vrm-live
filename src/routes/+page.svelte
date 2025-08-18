@@ -13,9 +13,7 @@
 
 <div class="min-h-screen flex-1 items-center justify-center bg-gray-800 text-white">
 	<Scene>
-		{#snippet children()}
-			<VRMAvatar modelPath={avatarModelPath} bind:vrm={vrmInstance} bind:animationController />
-		{/snippet}
+		<VRMAvatar modelPath={avatarModelPath} bind:vrm={vrmInstance} bind:animationController />
 	</Scene>
 
 	<Chat {vrmInstance} {animationController} />

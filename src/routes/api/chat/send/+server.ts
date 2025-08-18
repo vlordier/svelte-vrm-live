@@ -2,7 +2,8 @@ import type { ChatMessage } from '$lib/types/chat';
 import { json } from '@sveltejs/kit';
 import { GoogleGenerativeAI, type Schema, SchemaType } from '@google/generative-ai';
 import { GOOGLE_API_KEY } from '$env/static/private';
-import { dev } from '$app/environment'; // Import dev for conditional logging
+import { dev } from '$app/environment';
+// Note: Logging and error handling utilities available for future enhancement
 
 // Constants for LLM interaction
 const SYSTEM_PROMPT =
@@ -163,19 +164,19 @@ export async function POST({
 			},
 			{ status: 200 }
 		);
-	} catch (error: any) {
+	} catch (error: unknown) {
 		if (dev)
 			console.error(
 				'[API Send] Error during LLM interaction or broadcasting avatar message:',
 				error
 			);
 		let errorMessage = "Sorry, I'm having a bit of trouble thinking right now.";
-		if (error.message && typeof error.message === 'string') {
+		if (error instanceof Error && error.message && typeof error.message === 'string') {
 			if (error.message.includes('gemini') || error.message.includes('API key')) {
 				errorMessage =
 					'There seems to be an issue with my connection to my thoughts (AI service). Please try again later.';
 			} else if (error.message.includes('JSON')) {
-				errorMessage = "I received a thought that I couldn\'t quite understand (invalid format).";
+				errorMessage = "I received a thought that I couldn't quite understand (invalid format).";
 			}
 		}
 
@@ -191,7 +192,7 @@ export async function POST({
 		return json(
 			{
 				error: 'Failed to get avatar response.',
-				details: error.message || 'Unknown error',
+				details: error instanceof Error ? error.message : 'Unknown error',
 				avatarMessage: errorMessage // Return error message directly so it can still be spoken
 			},
 			{ status: 500 }
