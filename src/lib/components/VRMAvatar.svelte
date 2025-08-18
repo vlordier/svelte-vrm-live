@@ -8,7 +8,6 @@
 		AnimationController,
 		type AnimationPaths
 	} from '$lib/animation/AnimationController.svelte';
-	import { onMount } from 'svelte';
 
 	let {
 		modelPath = '/models/avatar.vrm',
@@ -36,33 +35,39 @@
 	const clock = new Clock();
 	const { scene: threlteScene } = useThrelte();
 
-	onMount(() => {
-		async function initVRMAndAnimation() {
-			try {
-				const loadedVRM = await loadVRMModel(modelPath);
-				vrm = loadedVRM;
-				console.log('[VRMAvatar] VRM loaded:', loadedVRM);
+	async function initVRMAndAnimation(path: string) {
+		try {
+			console.log('[VRMAvatar] Loading VRM model from:', path);
+			const loadedVRM = await loadVRMModel(path);
+			vrm = loadedVRM;
+			console.log('[VRMAvatar] VRM loaded successfully:', loadedVRM);
 
-				if (loadedVRM.scene) {
-					// Ensure meshes within the VRM model cast shadows and adjust ShaderMaterials
-					loadedVRM.scene.traverse((child) => {
-						if ((child as Mesh).isMesh) {
-							const mesh = child as Mesh;
-							mesh.castShadow = true;
-							mesh.receiveShadow = true; // Default to true for most meshes
-						}
-					});
+			if (loadedVRM.scene) {
+				// Ensure meshes within the VRM model cast shadows and adjust ShaderMaterials
+				loadedVRM.scene.traverse((child) => {
+					if ((child as Mesh).isMesh) {
+						const mesh = child as Mesh;
+						mesh.castShadow = true;
+						mesh.receiveShadow = true; // Default to true for most meshes
+					}
+				});
 
-					// Initialize animation controller
-					animationController = new AnimationController(loadedVRM, animationPaths);
-					console.log('[VRMAvatar] AnimationController initialized');
-				}
-			} catch (error) {
-				console.error('[VRMAvatar] Failed to load VRM model:', error);
-				vrm = null;
+				// Initialize animation controller
+				animationController = new AnimationController(loadedVRM, animationPaths);
+				console.log('[VRMAvatar] AnimationController initialized');
 			}
+		} catch (error) {
+			console.error('[VRMAvatar] Failed to load VRM model from', path, ':', error);
+			vrm = null;
 		}
-		initVRMAndAnimation();
+	}
+
+	// React to modelPath changes
+	$effect(() => {
+		if (modelPath) {
+			console.log('[VRMAvatar] Model path changed, loading:', modelPath);
+			initVRMAndAnimation(modelPath);
+		}
 	});
 
 	$effect(() => {
