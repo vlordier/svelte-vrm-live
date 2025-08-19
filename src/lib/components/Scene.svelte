@@ -2,6 +2,7 @@
 	import { Canvas, T } from '@threlte/core';
 	import OrbitController from './OrbitController.svelte';
 	import SceneModel from './SceneModel.svelte';
+	import PostProcessing from './PostProcessing.svelte';
 
 	let { children } = $props();
 </script>
@@ -13,6 +14,7 @@
 			<OrbitController />
 		</T.PerspectiveCamera>
 		<T.AmbientLight intensity={1} />
+		<PostProcessing />
 		{@render children()}
 	</Canvas>
 </div>
