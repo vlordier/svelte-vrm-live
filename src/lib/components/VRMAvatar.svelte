@@ -97,6 +97,7 @@
 		if (vrm) {
 			const vrmInstance = vrm; // Capture reactive value for the effect
 			const currentThrelteScene = threlteScene;
+			const currentAnimationController = animationController; // Capture the specific animation controller instance
 
 			if (vrmInstance?.scene && currentThrelteScene) {
 				const modelScene = vrmInstance.scene;
@@ -110,9 +111,9 @@
 					if (currentThrelteScene.children.includes(modelScene)) {
 						currentThrelteScene.remove(modelScene);
 					}
-					// Clean up animation controller
-					if (animationController) {
-						animationController.destroy();
+					// Clean up the specific animation controller instance for this effect
+					if (currentAnimationController) {
+						currentAnimationController.destroy();
 					}
 				};
 			}

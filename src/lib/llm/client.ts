@@ -197,7 +197,7 @@ export class UnifiedLLMClient {
 	async generateStructuredOutput(
 		systemInstruction: string,
 		prompt: string,
-		schema: Record<string, unknown>,
+		schema: Schema | Record<string, unknown>,
 		maxRetries = 10
 	): Promise<string> {
 		if (this.config.provider !== 'google') {
@@ -218,7 +218,7 @@ User request: ${prompt}`;
 			model: this.config.model,
 			generationConfig: {
 				responseMimeType: 'application/json',
-				responseSchema: schema as unknown as Schema,
+				responseSchema: schema as Schema,
 				maxOutputTokens: 64000
 			},
 			systemInstruction
