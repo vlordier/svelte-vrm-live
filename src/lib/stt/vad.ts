@@ -243,7 +243,9 @@ export class VADClient {
 	}
 
 	isListening(): boolean {
-		return this.isInitialized && this.vad !== null;
+		// Use the VAD's internal listening state for more accurate tracking
+		// @ts-expect-error - accessing private property for accurate state detection
+		return this.vad?.listening ?? false;
 	}
 
 	static async testMicrophoneAccess(): Promise<{ success: boolean; message: string }> {
