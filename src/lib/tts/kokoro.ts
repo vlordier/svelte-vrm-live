@@ -1,5 +1,7 @@
 import { KokoroTTS } from 'kokoro-js';
 import { env } from '$env/dynamic/private';
+import { ttsProgressManager } from './progress-manager';
+import { TTSCacheManager } from './cache-manager';
 
 export type KokoroVoice =
 	| 'af_heart'
@@ -48,6 +50,8 @@ export class KokoroTTSClient {
 	private tts: KokoroTTS | null = null;
 	private config: KokoroTTSConfig;
 	private isInitialized = false;
+	private maxRetries = 2;
+	private currentRetry = 0;
 
 	constructor(config?: Partial<KokoroTTSConfig>) {
 		// Auto-detect device based on environment
@@ -105,51 +109,195 @@ export class KokoroTTSClient {
 		return 'q4';
 	}
 
+	private createProgressBar(percentage: number, width: number = 20): string {
+		const filled = Math.floor((percentage / 100) * width);
+		const empty = width - filled;
+		const bar = '█'.repeat(filled) + '░'.repeat(empty);
+		return `[${bar}]`;
+	}
+
 	private async initialize(): Promise<void> {
 		if (this.isInitialized && this.tts) {
 			return;
 		}
 
-		try {
-			console.log(
-				`[KokoroTTS] Initializing with model: ${this.config.modelId}, dtype: ${this.config.dtype}, device: ${this.config.device}`
-			);
+		return this.initializeWithRetry();
+	}
 
-			// Add progress logging for model download
-			const startTime = Date.now();
-			console.log('[KokoroTTS] Starting model download/initialization...');
+	private async initializeWithRetry(): Promise<void> {
+		for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
+			this.currentRetry = attempt;
 
-			this.tts = await KokoroTTS.from_pretrained(this.config.modelId, {
-				dtype: this.config.dtype,
-				device: this.config.device,
-				progress_callback: (progress: any) => {
-					const percentage = Math.round((progress.loaded / progress.total) * 100);
-					const fileName = progress.file || 'model files';
-					if (!isNaN(percentage) && percentage >= 0 && percentage <= 100) {
-						console.log(`[KokoroTTS] Downloading ${fileName}: ${percentage}%`);
+			try {
+				console.log(
+					`[KokoroTTS] Initializing with model: ${this.config.modelId}, dtype: ${this.config.dtype}, device: ${this.config.device}${
+						attempt > 0 ? ` (attempt ${attempt + 1}/${this.maxRetries + 1})` : ''
+					}`
+				);
+
+				// For retry attempts, check and clear corrupt cache first
+				if (attempt > 0) {
+					console.log('[KokoroTTS] Checking cache validity for retry...');
+					ttsProgressManager.updateProgress({
+						status: 'retrying',
+						percentage: 0,
+						message: `Clearing corrupt cache, retry ${attempt}/${this.maxRetries}...`,
+						retryCount: attempt
+					});
+
+					const cacheValid = await TTSCacheManager.validateModelCache(this.config.modelId);
+					if (!cacheValid) {
+						console.log('[KokoroTTS] Clearing corrupt cache...');
+						await TTSCacheManager.clearModelCache(this.config.modelId);
+						// Small delay to ensure filesystem operations complete
+						await new Promise((resolve) => setTimeout(resolve, 1000));
 					}
 				}
-			});
 
-			const duration = Date.now() - startTime;
-			this.isInitialized = true;
-			console.log(`[KokoroTTS] Initialization complete in ${duration}ms`);
-		} catch (error) {
-			console.error('[KokoroTTS] Failed to initialize:', error);
+				// Add progress logging for model download
+				const startTime = Date.now();
+				console.log('[KokoroTTS] Starting model download/initialization...');
 
-			// Check if it's a network/download error
-			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-			if (
-				errorMessage.includes('fetch') ||
-				errorMessage.includes('network') ||
-				errorMessage.includes('download')
-			) {
-				throw new Error(
-					`Failed to download Kokoro TTS model. Please check your internet connection. ${errorMessage}`
+				// Update progress manager
+				ttsProgressManager.updateProgress({
+					status: 'downloading',
+					percentage: 0,
+					message:
+						attempt > 0
+							? `Retrying download (${attempt}/${this.maxRetries})...`
+							: 'Starting model download...',
+					retryCount: attempt
+				});
+
+				// Progress tracking with throttling
+				let lastProgressUpdate = 0;
+				let lastPercentage = -1;
+
+				this.tts = await KokoroTTS.from_pretrained(this.config.modelId, {
+					dtype: this.config.dtype,
+					device: this.config.device,
+					progress_callback: (progress: any) => {
+						const percentage = Math.round((progress.loaded / progress.total) * 100);
+						const fileName = progress.file || 'model files';
+						const now = Date.now();
+
+						// Only update progress every 500ms or when percentage changes significantly
+						if (
+							!isNaN(percentage) &&
+							percentage >= 0 &&
+							percentage <= 100 &&
+							(now - lastProgressUpdate > 500 || Math.abs(percentage - lastPercentage) >= 5)
+						) {
+							const progressBar = this.createProgressBar(percentage);
+							const retryText = attempt > 0 ? ` (retry ${attempt})` : '';
+							console.log(
+								`[KokoroTTS] Downloading ${fileName}${retryText}: ${progressBar} ${percentage}%`
+							);
+
+							// Update progress manager
+							ttsProgressManager.updateProgress({
+								status: 'downloading',
+								percentage,
+								fileName,
+								message: `Downloading ${fileName}${retryText}...`,
+								retryCount: attempt
+							});
+
+							lastProgressUpdate = now;
+							lastPercentage = percentage;
+						}
+					}
+				});
+
+				const duration = Date.now() - startTime;
+				this.isInitialized = true;
+				console.log(
+					`[KokoroTTS] Initialization complete in ${duration}ms${attempt > 0 ? ` (retry ${attempt} succeeded)` : ''}`
 				);
-			}
 
-			throw new Error(`Failed to initialize Kokoro TTS: ${errorMessage}`);
+				// Update progress manager - initialization complete
+				ttsProgressManager.updateProgress({
+					status: 'ready',
+					percentage: 100,
+					message: 'Model loaded and ready'
+				});
+
+				// Reset retry count on success
+				this.currentRetry = 0;
+				return; // Success, exit retry loop
+			} catch (error) {
+				console.error(`[KokoroTTS] Attempt ${attempt + 1} failed:`, error);
+
+				const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+				const isCorruptFile =
+					errorMessage.includes('Protobuf parsing failed') ||
+					errorMessage.includes('parse') ||
+					errorMessage.includes('corrupt');
+				const isNetworkError =
+					errorMessage.includes('fetch') ||
+					errorMessage.includes('network') ||
+					errorMessage.includes('download') ||
+					errorMessage.includes('timeout');
+
+				// If this is the last attempt, don't retry
+				if (attempt >= this.maxRetries) {
+					console.error(`[KokoroTTS] All retry attempts failed (${this.maxRetries + 1} attempts)`);
+
+					// Update progress manager with final error
+					ttsProgressManager.updateProgress({
+						status: 'error',
+						percentage: 0,
+						message: isCorruptFile
+							? 'Model file corrupted. Please try clearing cache manually.'
+							: isNetworkError
+								? 'Failed to download model. Check internet connection.'
+								: `Initialization failed: ${errorMessage}`
+					});
+
+					if (isNetworkError) {
+						throw new Error(
+							`Failed to download Kokoro TTS model after ${this.maxRetries + 1} attempts. Please check your internet connection.`
+						);
+					}
+
+					throw new Error(
+						`Failed to initialize Kokoro TTS after ${this.maxRetries + 1} attempts: ${errorMessage}`
+					);
+				}
+
+				// If it's a corrupt file or network error, we can retry
+				if (isCorruptFile || isNetworkError) {
+					console.log(
+						`[KokoroTTS] ${isCorruptFile ? 'Corrupt file' : 'Network error'} detected, will retry in 2 seconds...`
+					);
+
+					// Update progress manager with retry info
+					ttsProgressManager.updateProgress({
+						status: 'retrying',
+						percentage: 0,
+						message: `${isCorruptFile ? 'Corrupt file' : 'Network error'} - retrying in 2s...`,
+						retryCount: attempt + 1
+					});
+
+					// Clear cache if corrupt file detected
+					if (isCorruptFile) {
+						await TTSCacheManager.clearModelCache(this.config.modelId);
+					}
+
+					// Wait before retry
+					await new Promise((resolve) => setTimeout(resolve, 2000));
+					continue; // Retry
+				}
+
+				// For other errors, don't retry
+				ttsProgressManager.updateProgress({
+					status: 'error',
+					percentage: 0,
+					message: `Initialization failed: ${errorMessage}`
+				});
+
+				throw new Error(`Failed to initialize Kokoro TTS: ${errorMessage}`);
+			}
 		}
 	}
 

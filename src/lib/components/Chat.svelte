@@ -16,7 +16,9 @@
 	import { clientResponseFilter } from '$lib/utils/client-response-filter';
 
 	// TTS Status tracking
-	let ttsStatus = $state<'ready' | 'downloading' | 'error' | 'initializing' | 'unknown'>('unknown');
+	let ttsStatus = $state<
+		'ready' | 'downloading' | 'error' | 'initializing' | 'retrying' | 'unknown'
+	>('unknown');
 	// eslint-disable-next-line no-unused-vars
 	let ttsMessage = $state('Checking TTS status...');
 	// eslint-disable-next-line no-unused-vars
@@ -93,9 +95,13 @@
 					playWelcomeMessage();
 				}
 
-				// If downloading, poll for updates
-				if (ttsStatus === 'downloading' || ttsStatus === 'initializing') {
-					setTimeout(checkTTSStatus, 5000); // Check again in 5 seconds
+				// If downloading, initializing, or retrying, poll for updates
+				if (
+					ttsStatus === 'downloading' ||
+					ttsStatus === 'initializing' ||
+					ttsStatus === 'retrying'
+				) {
+					setTimeout(checkTTSStatus, 3000); // Check again in 3 seconds
 				}
 			} else {
 				ttsStatus = 'error';
@@ -406,6 +412,9 @@
 					{:else if ttsStatus === 'initializing'}
 						<span class="h-2 w-2 animate-spin rounded-full bg-blue-500"></span>
 						<span class="text-xs text-blue-400">Initializing...</span>
+					{:else if ttsStatus === 'retrying'}
+						<span class="h-2 w-2 animate-bounce rounded-full bg-orange-500"></span>
+						<span class="text-xs text-orange-400">Retrying... {ttsProgress}%</span>
 					{:else if ttsStatus === 'error'}
 						<span class="h-2 w-2 rounded-full bg-red-500"></span>
 						<span class="text-xs text-red-400">Error</span>
@@ -436,10 +445,12 @@
 		</div>
 
 		<!-- Progress Bar -->
-		{#if (ttsStatus === 'downloading' || ttsStatus === 'initializing') && ttsProgress > 0}
+		{#if (ttsStatus === 'downloading' || ttsStatus === 'initializing' || ttsStatus === 'retrying') && ttsProgress > 0}
 			<div class="mt-2 h-1 w-full rounded-full bg-gray-700">
 				<div
-					class="h-1 rounded-full bg-yellow-500 transition-all duration-300"
+					class="h-1 rounded-full transition-all duration-300 {ttsStatus === 'retrying'
+						? 'bg-orange-500'
+						: 'bg-yellow-500'}"
 					style="width: {ttsProgress}%"
 				></div>
 			</div>

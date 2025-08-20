@@ -87,6 +87,9 @@
 		"postprocessing": "^6.37.7",
 		"three": "^0.176.0"
 	},
+	"overrides": {
+		"roarr": "^7.21.1"
+	},
 	"lint-staged": {
 		"*.{js,ts,svelte}": [
 			"eslint --fix",
