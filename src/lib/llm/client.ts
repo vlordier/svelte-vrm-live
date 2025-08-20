@@ -204,10 +204,20 @@ export class UnifiedLLMClient {
 			// For non-Google providers, we'll do a simple JSON format request
 			const jsonPrompt = `${systemInstruction}
 
-Please respond with valid JSON matching this schema:
+You must respond with valid JSON data that fits this schema format:
 ${JSON.stringify(schema, null, 2)}
 
-User request: ${prompt}`;
+IMPORTANT: Do not return the schema itself. Return actual data that matches the schema structure.
+
+Example response format:
+{
+  "answer": "your actual response text here",
+  "emotion": "happy"
+}
+
+User request: ${prompt}
+
+Response (JSON only):`;
 
 			const response = await this.generateText(jsonPrompt);
 			return response.content;

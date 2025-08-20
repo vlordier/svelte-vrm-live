@@ -125,7 +125,7 @@
 	// Handle window resize
 	function handleResize() {
 		if (!composer || !renderer) return;
-		
+
 		const size = renderer.getSize(new THREE.Vector2());
 		composer.setSize(size.x, size.y);
 	}

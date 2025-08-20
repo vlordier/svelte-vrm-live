@@ -17,9 +17,7 @@
 </script>
 
 <!-- Toggle button -->
-<button class="toggle-btn" onclick={() => (showControls = !showControls)}>
-	🎛️ Post-FX
-</button>
+<button class="toggle-btn" onclick={() => (showControls = !showControls)}> 🎛️ Post-FX </button>
 
 {#if showControls}
 	<div class="controls-panel">
@@ -112,50 +110,60 @@
 		<!-- Quick Presets -->
 		<div class="presets">
 			<h4>Quick Presets</h4>
-			<button onclick={() => {
-				enableDepthBlur = false;
-				enableVignette = false;
-				enableBloom = false;
-			}}>No Effects</button>
+			<button
+				onclick={() => {
+					enableDepthBlur = false;
+					enableVignette = false;
+					enableBloom = false;
+				}}>No Effects</button
+			>
 
-			<button onclick={() => {
-				enableVignette = true;
-				vignetteOffset = 0.3;
-				vignetteDarkness = 0.15;
-				enableDepthBlur = false;
-				enableBloom = false;
-			}}>Vignette Only</button>
+			<button
+				onclick={() => {
+					enableVignette = true;
+					vignetteOffset = 0.3;
+					vignetteDarkness = 0.15;
+					enableDepthBlur = false;
+					enableBloom = false;
+				}}>Vignette Only</button
+			>
 
-			<button onclick={() => {
-				enableBloom = true;
-				bloomIntensity = 0.4;
-				bloomRadius = 0.85;
-				bloomThreshold = 0.85;
-				enableDepthBlur = false;
-				enableVignette = false;
-			}}>Old Webcam Bloom</button>
+			<button
+				onclick={() => {
+					enableBloom = true;
+					bloomIntensity = 0.4;
+					bloomRadius = 0.85;
+					bloomThreshold = 0.85;
+					enableDepthBlur = false;
+					enableVignette = false;
+				}}>Old Webcam Bloom</button
+			>
 
-			<button onclick={() => {
-				enableDepthBlur = true;
-				focusDistance = 0.05;
-				focalLength = 0.02;
-				bokehScale = 0.85;
-				enableVignette = true;
-				vignetteOffset = 0.3;
-				vignetteDarkness = 0.15;
-				enableBloom = false;
-			}}>Depth + Vignette</button>
+			<button
+				onclick={() => {
+					enableDepthBlur = true;
+					focusDistance = 0.05;
+					focalLength = 0.02;
+					bokehScale = 0.85;
+					enableVignette = true;
+					vignetteOffset = 0.3;
+					vignetteDarkness = 0.15;
+					enableBloom = false;
+				}}>Depth + Vignette</button
+			>
 
-			<button onclick={() => {
-				enableBloom = true;
-				bloomIntensity = 0.4;
-				bloomRadius = 0.85;
-				bloomThreshold = 0.85;
-				enableVignette = true;
-				vignetteOffset = 0.3;
-				vignetteDarkness = 0.15;
-				enableDepthBlur = false;
-			}}>Old Webcam (Bloom + Vignette)</button>
+			<button
+				onclick={() => {
+					enableBloom = true;
+					bloomIntensity = 0.4;
+					bloomRadius = 0.85;
+					bloomThreshold = 0.85;
+					enableVignette = true;
+					vignetteOffset = 0.3;
+					vignetteDarkness = 0.15;
+					enableDepthBlur = false;
+				}}>Old Webcam (Bloom + Vignette)</button
+			>
 		</div>
 	</div>
 {/if}

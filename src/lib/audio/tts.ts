@@ -257,16 +257,37 @@ async function fetchSpeechWithPhonemes(
 		throw new Error('No audio data in response');
 	}
 
+	console.log('[TTS] Converting base64 audio to AudioBuffer, sample rate:', data.sample_rate);
+
+	// Decode base64 to binary string
 	const audioData = atob(audioBase64);
+
+	// Convert binary string to ArrayBuffer
 	const audioArrayBuffer = new ArrayBuffer(audioData.length);
 	const audioView = new Uint8Array(audioArrayBuffer);
-
 	for (let i = 0; i < audioData.length; i++) {
 		audioView[i] = audioData.charCodeAt(i);
 	}
 
+	// Convert ArrayBuffer to Float32Array (raw PCM data from Kokoro)
+	const float32Data = new Float32Array(audioArrayBuffer);
+	console.log('[TTS] Raw PCM data length:', float32Data.length, 'samples');
+
+	// Create AudioBuffer from raw PCM data
 	const audioCtx = new AudioContext();
-	const audioBuffer = await audioCtx.decodeAudioData(audioArrayBuffer);
+	const sampleRate = data.sample_rate || 24000;
+	const audioBuffer = audioCtx.createBuffer(1, float32Data.length, sampleRate);
+
+	// Copy the PCM data to the AudioBuffer
+	const channelData = audioBuffer.getChannelData(0);
+	channelData.set(float32Data);
+
+	console.log('[TTS] Created AudioBuffer:', {
+		sampleRate: audioBuffer.sampleRate,
+		duration: audioBuffer.duration,
+		length: audioBuffer.length,
+		numberOfChannels: audioBuffer.numberOfChannels
+	});
 
 	// Extract phoneme timings
 	const timings: PhonemeTiming[] = [];
