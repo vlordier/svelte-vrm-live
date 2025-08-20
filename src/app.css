@@ -1,1 +1,21 @@
 @import 'tailwindcss';
+
+/* Universal font support for international characters */
+body {
+	font-family: 
+		/* System fonts for each platform */
+		-apple-system,
+		BlinkMacSystemFont,
+		/* Windows */ 'Segoe UI',
+		/* Android */ Roboto,
+		/* Basic web fallbacks */ 'Helvetica Neue',
+		Arial,
+		sans-serif,
+		/* Emoji and symbols */ 'Apple Color Emoji',
+		'Segoe UI Emoji',
+		'Segoe UI Symbol',
+		/* CJK fallbacks (Chinese, Japanese, Korean) */ 'Noto Sans CJK SC',
+		'Noto Sans CJK TC',
+		'Noto Sans CJK JP',
+		'Noto Sans CJK KR';
+}

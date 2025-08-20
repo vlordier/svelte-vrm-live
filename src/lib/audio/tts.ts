@@ -36,7 +36,6 @@ export const defaultLipSyncConfig: LipSyncConfig = {
 	debugLogging: true
 };
 
-
 // --- PRESETS ---
 export const lipSyncPresets = {
 	natural: { intensity: 0.8, smoothing: 0.4, debugLogging: false },
@@ -150,7 +149,7 @@ const phonemeToVRM: Record<string, ExpressionWeight[]> = {
 // --- LIP SYNC ANIMATOR ---
 class LipSyncAnimator {
 	private vrm: VRM;
-	private proxy: any;
+	private proxy: VRM['expressionManager'];
 	private currentValues: Map<VRMExpressionPresetName, number> = new Map();
 	private stopRequested = false;
 
@@ -188,7 +187,7 @@ class LipSyncAnimator {
 		// Reset all mouth expressions first
 		mouthExpressions.forEach((expr) => {
 			this.currentValues.set(expr, 0.0);
-			this.proxy.setValue(expr, 0.0);
+			this.proxy?.setValue(expr, 0.0);
 		});
 
 		// Apply blended expressions
@@ -196,7 +195,7 @@ class LipSyncAnimator {
 		expressionWeights.forEach(({ expression, weight }) => {
 			const normalizedWeight = weight * normalizer * globalIntensity;
 			this.currentValues.set(expression, normalizedWeight);
-			this.proxy.setValue(expression, normalizedWeight);
+			this.proxy?.setValue(expression, normalizedWeight);
 			neutralWeight += normalizedWeight;
 		});
 
@@ -219,7 +218,7 @@ class LipSyncAnimator {
 		Object.values(VRMExpressionPresetName).forEach((preset) => {
 			const value = preset === VRMExpressionPresetName.Neutral ? 1.0 : 0.0;
 			this.currentValues.set(preset, value);
-			this.proxy.setValue(preset, value);
+			this.proxy?.setValue(preset, value);
 		});
 	}
 
@@ -258,29 +257,55 @@ async function fetchSpeechWithPhonemes(
 		throw new Error('No audio data in response');
 	}
 
+	console.log('[TTS] Converting base64 audio to AudioBuffer, sample rate:', data.sample_rate);
+
+	// Decode base64 to binary string
 	const audioData = atob(audioBase64);
+
+	// Convert binary string to ArrayBuffer
 	const audioArrayBuffer = new ArrayBuffer(audioData.length);
 	const audioView = new Uint8Array(audioArrayBuffer);
-
 	for (let i = 0; i < audioData.length; i++) {
 		audioView[i] = audioData.charCodeAt(i);
 	}
 
+	// Convert ArrayBuffer to Float32Array (raw PCM data from Kokoro)
+	const float32Data = new Float32Array(audioArrayBuffer);
+	console.log('[TTS] Raw PCM data length:', float32Data.length, 'samples');
+
+	// Create AudioBuffer from raw PCM data
 	const audioCtx = new AudioContext();
-	const audioBuffer = await audioCtx.decodeAudioData(audioArrayBuffer);
+	const sampleRate = data.sample_rate || 24000;
+	const audioBuffer = audioCtx.createBuffer(1, float32Data.length, sampleRate);
+
+	// Copy the PCM data to the AudioBuffer
+	const channelData = audioBuffer.getChannelData(0);
+	channelData.set(float32Data);
+
+	console.log('[TTS] Created AudioBuffer:', {
+		sampleRate: audioBuffer.sampleRate,
+		duration: audioBuffer.duration,
+		length: audioBuffer.length,
+		numberOfChannels: audioBuffer.numberOfChannels
+	});
 
 	// Extract phoneme timings
 	const timings: PhonemeTiming[] = [];
 
 	if (data.phonemes && Array.isArray(data.phonemes)) {
-		data.phonemes.forEach((phoneme: any) => {
+		data.phonemes.forEach((phoneme: unknown) => {
 			if (
+				phoneme &&
+				typeof phoneme === 'object' &&
+				'character' in phoneme &&
+				'start' in phoneme &&
+				'end' in phoneme &&
 				phoneme.character &&
 				typeof phoneme.start === 'number' &&
 				typeof phoneme.end === 'number'
 			) {
 				timings.push({
-					phoneme: phoneme.character.toUpperCase(),
+					phoneme: String(phoneme.character).toUpperCase(),
 					start: phoneme.start,
 					end: phoneme.end
 				});
@@ -306,86 +331,87 @@ export async function speakWithLipsync(
 	// Ensure it returns Promise<void>
 	const finalConfig = { ...defaultLipSyncConfig, ...config };
 
-	return new Promise(async (resolveSpeak, rejectSpeak) => {
-		try {
-			if (finalConfig.debugLogging) {
-				console.log(
-					`[TTS] Starting lip sync for: ${text.substring(0, 50)}, Emotion: ${emotion || 'default'}`
-				);
-			}
-
-			// Get audio and timing data with phonemes
-			const { audioBuffer, timings } = await fetchSpeechWithPhonemes(text);
-
-			if (!timings.length && !audioBuffer) {
-				// Check for audioBuffer too
-				console.warn('[TTS] No timings or audio buffer, cannot play.');
-				resolveSpeak(); // Resolve if nothing to play
-				return;
-			}
-
-			// Create animator
-			const animator = new LipSyncAnimator(vrm);
-
-			// Set base emotion before starting lip-sync and audio
-			if (emotion && emotion !== 'neutral' && vrm.expressionManager) {
-				const targetPreset = emotionToVRMPreset[emotion];
-				if (targetPreset) {
-					vrm.expressionManager.setValue(VRMExpressionPresetName.Happy, 0);
-					vrm.expressionManager.setValue(VRMExpressionPresetName.Angry, 0);
-					vrm.expressionManager.setValue(VRMExpressionPresetName.Sad, 0);
-					vrm.expressionManager.setValue(VRMExpressionPresetName.Surprised, 0);
-					vrm.expressionManager.setValue(targetPreset, 1.0);
-					if (finalConfig.debugLogging) {
-						console.log(`[TTS] Set base emotion to: ${emotion} (${targetPreset})`);
-					}
-				}
-			}
-
-			// Start audio
-			const audioCtx = new AudioContext();
-			const audioSource = audioCtx.createBufferSource();
-			audioSource.buffer = audioBuffer;
-			audioSource.connect(audioCtx.destination);
-
-			// Event listener for when audio finishes
-			audioSource.onended = () => {
+	return new Promise((resolveSpeak, rejectSpeak) => {
+		(async () => {
+			try {
 				if (finalConfig.debugLogging) {
-					console.log('[TTS] Audio source finished playing.');
+					console.log(
+						`[TTS] Starting lip sync for: ${text.substring(0, 50)}, Emotion: ${emotion || 'default'}`
+					);
 				}
-				// The final reset and promise resolution will happen in the setTimeout below,
-				// which is timed relative to the audioBuffer.duration.
-			};
-			audioSource.start();
 
-			if (finalConfig.debugLogging) {
-				console.log(`[TTS] Playing audio and ${timings.length} phoneme animations`);
-			}
+				// Get audio and timing data with phonemes
+				const { audioBuffer, timings } = await fetchSpeechWithPhonemes(text);
 
-			// Schedule all lip sync animations using the improved phoneme mapping
-			timings.forEach(({ phoneme, start, end }) => {
-				const expressionWeights = phonemeToVRM[phoneme] || phonemeToVRM['NEUTRAL'];
-				setTimeout(() => {
-					animator.setBlendedExpression(expressionWeights, finalConfig.intensity);
-				}, start * 1000);
-			});
+				if (!timings.length && !audioBuffer) {
+					// Check for audioBuffer too
+					console.warn('[TTS] No timings or audio buffer, cannot play.');
+					resolveSpeak(); // Resolve if nothing to play
+					return;
+				}
 
-			// Reset to neutral after audio ends + small buffer
-			const totalDuration = audioBuffer.duration;
-			setTimeout(
-				() => {
-					animator.stop(); // This will reset expressions to Neutral
-					if (finalConfig.debugLogging) {
-						console.log('[TTS] Lip sync completed, animator stopped and expressions reset.');
+				// Create animator
+				const animator = new LipSyncAnimator(vrm);
+
+				// Set base emotion before starting lip-sync and audio
+				if (emotion && emotion !== 'neutral' && vrm.expressionManager) {
+					const targetPreset = emotionToVRMPreset[emotion];
+					if (targetPreset) {
+						vrm.expressionManager.setValue(VRMExpressionPresetName.Happy, 0);
+						vrm.expressionManager.setValue(VRMExpressionPresetName.Angry, 0);
+						vrm.expressionManager.setValue(VRMExpressionPresetName.Sad, 0);
+						vrm.expressionManager.setValue(VRMExpressionPresetName.Surprised, 0);
+						vrm.expressionManager.setValue(targetPreset, 1.0);
+						if (finalConfig.debugLogging) {
+							console.log(`[TTS] Set base emotion to: ${emotion} (${targetPreset})`);
+						}
 					}
-					resolveSpeak(); // Resolve the main promise here
-				},
-				(totalDuration + 0.25) * 1000
-			); // Reduced buffer slightly to 0.25s
-		} catch (error) {
-			console.error('[TTS] Error in speakWithLipsync:', error);
-			rejectSpeak(error); // Reject the main promise on error
-		}
+				}
+
+				// Start audio
+				const audioCtx = new AudioContext();
+				const audioSource = audioCtx.createBufferSource();
+				audioSource.buffer = audioBuffer;
+				audioSource.connect(audioCtx.destination);
+
+				// Event listener for when audio finishes
+				audioSource.onended = () => {
+					if (finalConfig.debugLogging) {
+						console.log('[TTS] Audio source finished playing.');
+					}
+					// The final reset and promise resolution will happen in the setTimeout below,
+					// which is timed relative to the audioBuffer.duration.
+				};
+				audioSource.start();
+
+				if (finalConfig.debugLogging) {
+					console.log(`[TTS] Playing audio and ${timings.length} phoneme animations`);
+				}
+
+				// Schedule all lip sync animations using the improved phoneme mapping
+				timings.forEach(({ phoneme, start, end: _end }) => {
+					const expressionWeights = phonemeToVRM[phoneme] || phonemeToVRM['NEUTRAL'];
+					setTimeout(() => {
+						animator.setBlendedExpression(expressionWeights, finalConfig.intensity);
+					}, start * 1000);
+				});
+
+				// Reset to neutral after audio ends + small buffer
+				const totalDuration = audioBuffer.duration;
+				setTimeout(
+					() => {
+						animator.stop(); // This will reset expressions to Neutral
+						if (finalConfig.debugLogging) {
+							console.log('[TTS] Lip sync completed, animator stopped and expressions reset.');
+						}
+						resolveSpeak(); // Resolve the main promise here
+					},
+					(totalDuration + 0.25) * 1000
+				); // Reduced buffer slightly to 0.25s
+			} catch (error) {
+				console.error('[TTS] Error in speakWithLipsync:', error);
+				rejectSpeak(error); // Reject the main promise on error
+			}
+		})();
 	});
 }
-

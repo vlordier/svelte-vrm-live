@@ -1,0 +1,84 @@
+name: Security Audit
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run security audit daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  security-audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci || npm install
+
+      - name: Run npm audit (allow low severity)
+        run: npm audit --audit-level=moderate
+        continue-on-error: true
+
+      - name: Run npm audit for high/critical
+        run: npm audit --audit-level=high
+
+      - name: Check for vulnerable dependencies
+        run: |
+          echo "Checking for high/critical vulnerabilities..."
+          npm audit --audit-level=high --json > audit-results.json 2>/dev/null || echo "Audit completed"
+
+          # Check if there are any high/critical vulnerabilities using correct JSON structure
+          HIGH_CRITICAL=$(npm audit --audit-level=high --json 2>/dev/null | grep -o '"high": [0-9]*' | grep -o '[0-9]*' || echo "0")
+          CRITICAL=$(npm audit --audit-level=high --json 2>/dev/null | grep -o '"critical": [0-9]*' | grep -o '[0-9]*' || echo "0")
+
+          echo "High vulnerabilities found: $HIGH_CRITICAL"
+          echo "Critical vulnerabilities found: $CRITICAL"
+
+          if [ "$HIGH_CRITICAL" != "0" ] || [ "$CRITICAL" != "0" ]; then
+            echo "❌ High or critical vulnerabilities found!"
+            exit 1
+          else
+            echo "✅ No high or critical vulnerabilities found"
+          fi
+
+      - name: Upload audit results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-audit-results
+          path: audit-results.json
+          retention-days: 30
+
+  dependency-review:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+          allow-licenses: MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC
+        continue-on-error: true
+
+      - name: Manual dependency diff check
+        if: failure()
+        run: |
+          echo "⚠️  GitHub Advanced Security dependency review not available."
+          echo "Performing manual dependency comparison..."
+          git fetch origin ${{ github.base_ref }}
+          git diff origin/${{ github.base_ref }}...HEAD package-lock.json || echo "No package-lock.json changes detected"

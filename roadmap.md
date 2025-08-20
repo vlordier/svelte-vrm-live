@@ -61,7 +61,6 @@ static/
 - [x] **Tailwind CSS v4**: Modern utility-first styling
 - [x] **Cloudflare Adapter**: Deployment ready for edge computing
 
-
 ### 🚧 In Progress
 
 #### Animation & Interaction

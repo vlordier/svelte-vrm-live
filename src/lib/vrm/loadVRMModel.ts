@@ -1,6 +1,6 @@
 import { GLTFLoader, type GLTFParser } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+
 import type { VRM } from '@pixiv/three-vrm';
 import type { Object3D } from 'three';
 

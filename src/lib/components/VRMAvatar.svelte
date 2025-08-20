@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { useTask, useThrelte } from '@threlte/core';
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	import { type VRM, VRMExpressionPresetName } from '@pixiv/three-vrm';
 	import { loadVRMModel } from '$lib/vrm/loadVRMModel';
 	import { Clock, Mesh } from 'three';
@@ -9,7 +8,6 @@
 		AnimationController,
 		type AnimationPaths
 	} from '$lib/animation/AnimationController.svelte';
-	import { onMount } from 'svelte';
 
 	let {
 		modelPath = '/models/avatar.vrm',
@@ -37,39 +35,67 @@
 	const clock = new Clock();
 	const { scene: threlteScene } = useThrelte();
 
-	onMount(() => {
-		async function initVRMAndAnimation() {
-			try {
-				const loadedVRM = await loadVRMModel(modelPath);
-				vrm = loadedVRM;
-				console.log('[VRMAvatar] VRM loaded:', loadedVRM);
+	async function loadVRMResources(
+		path: string
+	): Promise<{ vrm: VRM; animationController: AnimationController } | null> {
+		try {
+			console.log('[VRMAvatar] Loading VRM model from:', path);
+			const loadedVRM = await loadVRMModel(path);
+			console.log('[VRMAvatar] VRM loaded successfully:', loadedVRM);
 
-				if (loadedVRM.scene) {
-					// Ensure meshes within the VRM model cast shadows and adjust ShaderMaterials
-					loadedVRM.scene.traverse((child) => {
-						if ((child as Mesh).isMesh) {
-							const mesh = child as Mesh;
-							mesh.castShadow = true;
-							mesh.receiveShadow = true; // Default to true for most meshes
-						}
-					});
+			if (loadedVRM.scene) {
+				// Ensure meshes within the VRM model cast shadows
+				loadedVRM.scene.traverse((child) => {
+					if ((child as Mesh).isMesh) {
+						const mesh = child as Mesh;
+						mesh.castShadow = true;
+						mesh.receiveShadow = true;
+					}
+				});
 
-					// Initialize animation controller
-					animationController = new AnimationController(loadedVRM, animationPaths);
-					console.log('[VRMAvatar] AnimationController initialized');
-				}
-			} catch (error) {
-				console.error('[VRMAvatar] Failed to load VRM model:', error);
-				vrm = null;
+				// Initialize animation controller
+				const newAnimationController = new AnimationController(loadedVRM, animationPaths);
+				console.log('[VRMAvatar] AnimationController initialized');
+				return { vrm: loadedVRM, animationController: newAnimationController };
 			}
+			return null;
+		} catch (error) {
+			console.error('[VRMAvatar] Failed to load VRM model from', path, ':', error);
+			return null;
 		}
-		initVRMAndAnimation();
+	}
+
+	// React to modelPath changes, handling race conditions
+	$effect(() => {
+		if (modelPath) {
+			let ignore = false;
+			console.log('[VRMAvatar] Model path changed, loading:', modelPath);
+
+			// Clear old avatar immediately for better UX
+			vrm = null;
+			animationController = null;
+
+			loadVRMResources(modelPath).then((resources) => {
+				if (ignore) return;
+
+				if (resources) {
+					vrm = resources.vrm;
+					animationController = resources.animationController;
+				}
+				// Note: if resources is null, vrm and animationController remain null (set above)
+			});
+
+			return () => {
+				ignore = true;
+			};
+		}
 	});
 
 	$effect(() => {
 		if (vrm) {
 			const vrmInstance = vrm; // Capture reactive value for the effect
 			const currentThrelteScene = threlteScene;
+			const currentAnimationController = animationController; // Capture the specific animation controller instance
 
 			if (vrmInstance?.scene && currentThrelteScene) {
 				const modelScene = vrmInstance.scene;
@@ -83,16 +109,15 @@
 					if (currentThrelteScene.children.includes(modelScene)) {
 						currentThrelteScene.remove(modelScene);
 					}
-					// Clean up animation controller
-					if (animationController) {
-						animationController.destroy();
+					// Clean up the specific animation controller instance for this effect
+					if (currentAnimationController) {
+						currentAnimationController.destroy();
 					}
 				};
 			}
 		}
 	});
 
-	let blinkState = $state(false);
 	let lastBlinkTime = $state(0);
 	let nextBlinkInterval = $state(2 + Math.random() * 5);
 
@@ -110,14 +135,14 @@
 		// but consider if they should be disabled if a VRMA controls expressions.
 		if (vrm.expressionManager && elapsedTime - lastBlinkTime > nextBlinkInterval) {
 			// Added !vrmaAction
-			blinkState = true;
+			// blinkState = true;
 			vrm.expressionManager.setValue(VRMExpressionPresetName.Blink, 1);
 
 			setTimeout(() => {
 				if (vrm && vrm.expressionManager) {
 					vrm.expressionManager.setValue(VRMExpressionPresetName.Blink, 0);
 				}
-				blinkState = false;
+				// blinkState = false;
 				lastBlinkTime = elapsedTime;
 				nextBlinkInterval = 2 + Math.random() * 5;
 			}, 150);

@@ -108,21 +108,21 @@
 	angle={spotLightAngle}
 	penumbra={1}
 	intensity={50}
-	color={'#ffffdd'}
+	color="#ffffdd"
 	distance={4000}
 	decay={2}
 />
 
-<T.PointLight position={[-2.5, 3, 8.5]} intensity={30} color={'#ffffdd'} distance={10} decay={2} />
+<T.PointLight position={[-2.5, 3, 8.5]} intensity={30} color="#ffffdd" distance={10} decay={2} />
 
 <T.SpotLight
 	position={[-2, 3, -4.3]}
 	angle={spotLightAngle}
 	penumbra={1}
 	intensity={50}
-	color={'#ffffdd'}
+	color="#ffffdd"
 	distance={100}
 	decay={2}
 />
 
-<T.PointLight position={[-2.7, 3, -4.3]} intensity={30} color={'#ffffdd'} distance={10} decay={2} />
+<T.PointLight position={[-2.7, 3, -4.3]} intensity={30} color="#ffffdd" distance={10} decay={2} />
