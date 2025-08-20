@@ -30,7 +30,7 @@ export interface VADCallbacks {
 
 export class VADClient {
 	private vad: Awaited<ReturnType<typeof MicVAD.new>> | null = null;
-	private readonly config: Required<VADConfig>;
+	private config: Required<VADConfig>;
 	private callbacks: VADCallbacks;
 	private isInitialized = false;
 	private lastError?: Error;
@@ -155,7 +155,7 @@ export class VADClient {
 						this.callbacks.onError?.(callbackError);
 					}
 				}
-			});
+			} as any);
 
 			this.isInitialized = true;
 			console.log('[VAD] Voice Activity Detection initialized successfully', {

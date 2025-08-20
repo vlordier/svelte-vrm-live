@@ -51,7 +51,7 @@ export class WhisperClient {
 			console.log(`[Whisper] Config: dtype=${this.config.dtype}, device=${this.config.device}`);
 
 			this.transcriber = await pipeline('automatic-speech-recognition', this.config.modelId, {
-				dtype: this.config.dtype,
+				dtype: this.config.dtype as any,
 				device: this.config.device
 			});
 

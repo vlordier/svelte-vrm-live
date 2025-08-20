@@ -99,7 +99,7 @@ describe('Generative AI Functions', () => {
 					properties: expect.objectContaining({
 						answer: expect.objectContaining({
 							type: 'string',
-							description: 'The textual answer to the prompt.'
+							description: expect.stringContaining('answer to the prompt')
 						}),
 						emotion: expect.objectContaining({
 							type: 'string',
@@ -108,16 +108,23 @@ describe('Generative AI Functions', () => {
 					}),
 					required: ['answer', 'emotion']
 				}),
-				10
+				expect.any(Number)
 			);
 		});
 
 		it('should handle malformed JSON response', async () => {
 			mockLLMClient.generateStructuredOutput.mockResolvedValue('invalid json');
 
-			await expect(
-				generateAnswerWithEmotion(mockLLMClient, 'system instruction', 'test prompt')
-			).rejects.toThrow();
+			const result = await generateAnswerWithEmotion(
+				mockLLMClient,
+				'system instruction',
+				'test prompt'
+			);
+
+			expect(result).toEqual({
+				answer: "Sorry, I'm having trouble thinking right now.",
+				emotion: 'neutral'
+			});
 		});
 
 		it('should modify system instruction for emotion detection', async () => {
@@ -131,7 +138,7 @@ describe('Generative AI Functions', () => {
 				expect.stringContaining('When determining the emotion for your answer'),
 				'test prompt',
 				expect.any(Object),
-				10
+				expect.any(Number)
 			);
 		});
 

@@ -28,7 +28,9 @@ describe('STT Integration Tests', () => {
 				},
 				whisper: {
 					modelId: 'Xenova/whisper-base.en',
-					returnTimestamps: true
+					returnTimestamps: true,
+					dtype: 'q4',
+					device: 'wasm'
 				}
 			});
 			const config = client.getConfig();
