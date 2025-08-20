@@ -124,8 +124,19 @@ export class WhisperClient {
 
 	async dispose(): Promise<void> {
 		if (this.transcriber) {
-			// Transformers.js pipeline cleanup
-			this.transcriber = null;
+			try {
+				// Explicit cleanup for transformers.js pipeline
+				// This helps prevent memory leaks, especially with WebGL/WebGPU contexts
+				if (typeof this.transcriber.dispose === 'function') {
+					await this.transcriber.dispose();
+				}
+				// Clear the reference
+				this.transcriber = null;
+				console.log('[Whisper] Transcriber pipeline disposed successfully');
+			} catch (error) {
+				console.warn('[Whisper] Warning during transcriber disposal:', error);
+				this.transcriber = null;
+			}
 		}
 		this.isInitialized = false;
 		console.log('[Whisper] Whisper ASR client disposed');

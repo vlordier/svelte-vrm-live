@@ -52,16 +52,22 @@ console.log();
 console.log('📋 Current Configuration:');
 
 console.log('\n🎙️ VAD (Voice Activity Detection):');
-console.log(`   Positive Threshold: ${process.env.VAD_POSITIVE_THRESHOLD || '0.8 (default)'}`);
-console.log(`   Negative Threshold: ${process.env.VAD_NEGATIVE_THRESHOLD || '0.35 (default)'}`);
-console.log(`   Min Speech Frames: ${process.env.VAD_MIN_SPEECH_FRAMES || '5 (default)'}`);
+console.log(
+	`   Positive Threshold: ${process.env.PUBLIC_VAD_POSITIVE_THRESHOLD || '0.8 (default)'}`
+);
+console.log(
+	`   Negative Threshold: ${process.env.PUBLIC_VAD_NEGATIVE_THRESHOLD || '0.35 (default)'}`
+);
+console.log(`   Min Speech Frames: ${process.env.PUBLIC_VAD_MIN_SPEECH_FRAMES || '5 (default)'}`);
 
 console.log('\n🧠 Whisper ASR:');
-console.log(`   Model: ${process.env.WHISPER_MODEL_ID || 'Xenova/whisper-tiny.en (default)'}`);
-console.log(`   Dtype: ${process.env.WHISPER_DTYPE || 'q4 (default)'}`);
-console.log(`   Device: ${process.env.WHISPER_DEVICE || 'wasm (default)'}`);
-console.log(`   Language: ${process.env.WHISPER_LANGUAGE || 'en (default)'}`);
-console.log(`   Task: ${process.env.WHISPER_TASK || 'transcribe (default)'}`);
+console.log(
+	`   Model: ${process.env.PUBLIC_WHISPER_MODEL_ID || 'Xenova/whisper-tiny.en (default)'}`
+);
+console.log(`   Dtype: ${process.env.PUBLIC_WHISPER_DTYPE || 'q4 (default)'}`);
+console.log(`   Device: ${process.env.PUBLIC_WHISPER_DEVICE || 'wasm (default)'}`);
+console.log(`   Language: ${process.env.PUBLIC_WHISPER_LANGUAGE || 'en (default)'}`);
+console.log(`   Task: ${process.env.PUBLIC_WHISPER_TASK || 'transcribe (default)'}`);
 
 // Check browser compatibility
 console.log('\n🌐 Browser Requirements:');
@@ -71,7 +77,7 @@ console.log('   • HTTPS connection (required for microphone access)');
 console.log('   • Sufficient memory for model loading');
 
 // Model size information
-const selectedModel = process.env.WHISPER_MODEL_ID || 'Xenova/whisper-tiny.en';
+const selectedModel = process.env.PUBLIC_WHISPER_MODEL_ID || 'Xenova/whisper-tiny.en';
 const modelSizes = {
 	'Xenova/whisper-tiny.en': '39MB',
 	'Xenova/whisper-tiny': '39MB',
@@ -97,7 +103,7 @@ console.log('   • First run: Slower due to model download');
 // Configuration recommendations
 console.log('\n💡 Configuration Recommendations:');
 
-const device = process.env.WHISPER_DEVICE || 'wasm';
+const device = process.env.PUBLIC_WHISPER_DEVICE || 'wasm';
 switch (device) {
 	case 'webgpu':
 		console.log('   🚀 WebGPU: Fastest processing, requires WebGPU support');
@@ -113,7 +119,7 @@ switch (device) {
 		break;
 }
 
-const dtype = process.env.WHISPER_DTYPE || 'q4';
+const dtype = process.env.PUBLIC_WHISPER_DTYPE || 'q4';
 switch (dtype) {
 	case 'fp32':
 		console.log('   📊 FP32: Highest quality, largest size, slowest');

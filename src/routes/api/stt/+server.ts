@@ -14,23 +14,6 @@ export const GET: RequestHandler = async ({ url }) => {
 					data: UnifiedSTTClient.getProviderInfo()
 				});
 
-			case 'test-mic': {
-				const micResult = await UnifiedSTTClient.testMicrophoneAccess();
-				return json({
-					success: micResult.success,
-					message: micResult.message
-				});
-			}
-
-			case 'test-connection': {
-				const testResult = await UnifiedSTTClient.testConnection();
-				return json({
-					success: testResult.success,
-					message: testResult.message,
-					details: testResult.details
-				});
-			}
-
 			case 'models':
 				return json({
 					success: true,
@@ -41,7 +24,7 @@ export const GET: RequestHandler = async ({ url }) => {
 				return json(
 					{
 						success: false,
-						message: 'Invalid action. Available actions: info, test-mic, test-connection, models'
+						message: 'Invalid action. Available actions: info, models'
 					},
 					{ status: 400 }
 				);

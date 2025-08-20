@@ -1,6 +1,6 @@
 import { VADClient, type VADConfig, type VADCallbacks } from './vad';
 import { WhisperClient, type WhisperConfig, type TranscriptionResult } from './whisper';
-import { env } from '$env/dynamic/private';
+import { env } from '$env/dynamic/public';
 
 export interface STTConfig {
 	vad: VADConfig;
@@ -30,18 +30,18 @@ export class UnifiedSTTClient {
 		this.config = {
 			vad: {
 				startOnLoad: false,
-				positiveSpeechThreshold: Number(env.VAD_POSITIVE_THRESHOLD) || 0.8,
-				negativeSpeechThreshold: Number(env.VAD_NEGATIVE_THRESHOLD) || 0.35,
-				minSpeechFrames: Number(env.VAD_MIN_SPEECH_FRAMES) || 5,
+				positiveSpeechThreshold: Number(env.PUBLIC_VAD_POSITIVE_THRESHOLD) || 0.8,
+				negativeSpeechThreshold: Number(env.PUBLIC_VAD_NEGATIVE_THRESHOLD) || 0.35,
+				minSpeechFrames: Number(env.PUBLIC_VAD_MIN_SPEECH_FRAMES) || 5,
 				...config?.vad
 			},
 			whisper: {
-				modelId: env.WHISPER_MODEL_ID || 'Xenova/whisper-tiny.en',
-				dtype: (env.WHISPER_DTYPE as WhisperConfig['dtype']) || 'q4',
-				device: (env.WHISPER_DEVICE as WhisperConfig['device']) || 'wasm',
+				modelId: env.PUBLIC_WHISPER_MODEL_ID || 'Xenova/whisper-tiny.en',
+				dtype: (env.PUBLIC_WHISPER_DTYPE as WhisperConfig['dtype']) || 'q4',
+				device: (env.PUBLIC_WHISPER_DEVICE as WhisperConfig['device']) || 'wasm',
 				returnTimestamps: config?.whisper?.returnTimestamps || false,
-				language: env.WHISPER_LANGUAGE || 'en',
-				task: (env.WHISPER_TASK as WhisperConfig['task']) || 'transcribe',
+				language: env.PUBLIC_WHISPER_LANGUAGE || 'en',
+				task: (env.PUBLIC_WHISPER_TASK as WhisperConfig['task']) || 'transcribe',
 				...config?.whisper
 			},
 			autoStart: config?.autoStart ?? false
@@ -222,50 +222,5 @@ export class UnifiedSTTClient {
 				models: WhisperClient.getAvailableModels()
 			}
 		};
-	}
-
-	static async testMicrophoneAccess(): Promise<{ success: boolean; message: string }> {
-		return VADClient.testMicrophoneAccess();
-	}
-
-	static async testConnection(config?: Partial<STTConfig>): Promise<{
-		success: boolean;
-		message: string;
-		details: {
-			vad: { success: boolean; message: string };
-			whisper: { success: boolean; message: string };
-		};
-	}> {
-		try {
-			console.log('[STT] Testing Speech-to-Text system...');
-
-			// Test microphone access
-			const micTest = await this.testMicrophoneAccess();
-
-			// Test Whisper
-			const whisperTest = await WhisperClient.testConnection(config?.whisper);
-
-			const allSuccessful = micTest.success && whisperTest.success;
-
-			return {
-				success: allSuccessful,
-				message: allSuccessful
-					? 'Speech-to-Text system test successful'
-					: 'Some Speech-to-Text components failed testing',
-				details: {
-					vad: micTest,
-					whisper: whisperTest
-				}
-			};
-		} catch (error) {
-			return {
-				success: false,
-				message: `Speech-to-Text test failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-				details: {
-					vad: { success: false, message: 'Test not completed' },
-					whisper: { success: false, message: 'Test not completed' }
-				}
-			};
-		}
 	}
 }
