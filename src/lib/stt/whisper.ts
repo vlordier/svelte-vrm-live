@@ -28,17 +28,31 @@ export class WhisperClient {
 	private isInitialized = false;
 
 	constructor(config?: Partial<WhisperConfig>) {
+		const modelId = config?.modelId || 'Xenova/whisper-tiny.en';
+		const isEnglishOnly = modelId.includes('.en');
+
 		this.config = {
-			modelId: config?.modelId || 'Xenova/whisper-tiny.en',
+			modelId,
 			dtype: config?.dtype || 'q4',
 			device: config?.device || 'wasm',
 			returnTimestamps: config?.returnTimestamps || false,
 			chunkLength: config?.chunkLength || 30,
 			strideLengthLeft: config?.strideLengthLeft || 5,
-			strideLengthRight: config?.strideLengthRight || 5,
-			language: config?.language || 'en',
-			task: config?.task || 'transcribe'
-		};
+			strideLengthRight: config?.strideLengthRight || 5
+		} as WhisperConfig;
+
+		// Only add language and task for multilingual models
+		if (!isEnglishOnly) {
+			this.config.language = config?.language || 'en';
+			this.config.task = config?.task || 'transcribe';
+		}
+
+		console.log(
+			`[Whisper] Using ${isEnglishOnly ? 'English-only' : 'multilingual'} model: ${modelId}`
+		);
+		if (isEnglishOnly) {
+			console.log('[Whisper] English-only model detected - excluding language/task parameters');
+		}
 	}
 
 	private async initialize(): Promise<void> {
@@ -50,10 +64,10 @@ export class WhisperClient {
 			console.log(`[Whisper] Initializing ASR with model: ${this.config.modelId}`);
 			console.log(`[Whisper] Config: dtype=${this.config.dtype}, device=${this.config.device}`);
 
-			this.transcriber = await pipeline('automatic-speech-recognition', this.config.modelId, {
+			this.transcriber = (await pipeline('automatic-speech-recognition', this.config.modelId, {
 				dtype: this.config.dtype as any,
 				device: this.config.device
-			});
+			})) as any;
 
 			this.isInitialized = true;
 			console.log('[Whisper] Automatic Speech Recognition initialized successfully');
@@ -77,13 +91,24 @@ export class WhisperClient {
 
 			const startTime = performance.now();
 
-			const result = await this.transcriber(audio, {
+			// Build transcription options - only include language/task if they exist
+			const transcribeOptions: any = {
 				return_timestamps: this.config.returnTimestamps,
 				chunk_length_s: this.config.chunkLength,
-				stride_length_s: [this.config.strideLengthLeft, this.config.strideLengthRight],
-				language: this.config.language,
-				task: this.config.task
-			});
+				stride_length_s: [this.config.strideLengthLeft, this.config.strideLengthRight]
+			};
+
+			// Only add language and task for multilingual models
+			if (this.config.language !== undefined) {
+				transcribeOptions.language = this.config.language;
+			}
+			if (this.config.task !== undefined) {
+				transcribeOptions.task = this.config.task;
+			}
+
+			console.log(`[Whisper] Transcription options:`, transcribeOptions);
+
+			const result = await this.transcriber(audio, transcribeOptions);
 
 			const endTime = performance.now();
 			const processingTime = (endTime - startTime) / 1000;
@@ -95,9 +120,13 @@ export class WhisperClient {
 			const transcriptionResult: TranscriptionResult = {
 				text: result.text || '',
 				chunks: result.chunks || undefined,
-				language: this.config.language,
 				confidence: result.confidence || undefined
 			};
+
+			// Only add language if it was configured (for multilingual models)
+			if (this.config.language !== undefined) {
+				transcriptionResult.language = this.config.language;
+			}
 
 			return transcriptionResult;
 		} catch (error) {

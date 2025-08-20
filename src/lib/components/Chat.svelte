@@ -1,3 +1,4 @@
+<!-- eslint-disable no-undef -->
 <script lang="ts">
 	import { browser } from '$app/environment';
 	import type { VRM } from '@pixiv/three-vrm';
@@ -10,10 +11,14 @@
 	import type { ChatMessage } from '$lib/types/chat';
 	import type { AnimationController } from '$lib/animation/AnimationController.svelte';
 	import type { AnswerWithEmotion } from '$lib/llm/generative';
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import Send from './icons/send.svelte';
+	import Microphone from './icons/microphone.svelte';
 	import { AudioDeviceChecker, type AudioDeviceInfo } from '$lib/audio/device-checker';
 	import { clientResponseFilter } from '$lib/utils/client-response-filter';
+	import { UnifiedSTTClient, type STTCallbacks, type STTStatus } from '$lib/stt/client';
+	import type { TranscriptionResult } from '$lib/stt/whisper';
+	import { autocorrect, preloadSpellcheck } from '$lib/utils/spellcheck';
 
 	// TTS Status tracking
 	let ttsStatus = $state<
@@ -54,6 +59,16 @@
 	let isSpeaking = $state(false);
 	let ttsEnabled = $state(true); // Quick toggle to disable TTS entirely
 
+	// STT (Speech-to-Text) state
+	let sttClient = $state<UnifiedSTTClient | null>(null);
+	let sttStatus = $state<STTStatus>('idle');
+	let sttEnabled = $state(false); // Toggle for STT mode
+	let isTranscribing = $state(false);
+	let sttError = $state<string | null>(null);
+	let sttInitialized = $state(false);
+	let voiceDetected = $state(false); // Voice activity detection feedback
+	let autoSendTranscription = $state(true); // Auto-send transcribed messages
+
 	// Load chat history from localStorage on component mount
 	onMount(() => {
 		if (browser) {
@@ -69,8 +84,315 @@
 			// Check TTS status and audio devices
 			checkTTSStatus();
 			checkAudioDevices();
+
+			// Initialize STT system
+			initializeSTT();
+
+			// Preload spellcheck dictionary
+			preloadSpellcheck().then((success) => {
+				if (success) {
+					console.log('[Chat] Spellcheck dictionary preloaded successfully');
+				} else {
+					console.warn('[Chat] Failed to preload spellcheck dictionary');
+				}
+			});
 		}
 	});
+
+	// Cleanup on component destroy
+	onDestroy(() => {
+		if (sttClient) {
+			sttClient.destroy();
+			console.log('[Chat STT] STT client destroyed');
+		}
+	});
+
+	// STT (Speech-to-Text) Functions
+	async function initializeSTT() {
+		try {
+			console.log('[Chat STT] Starting STT initialization...');
+
+			// Clear any previous errors
+			sttError = null;
+			sttStatus = 'idle';
+
+			const sttCallbacks: STTCallbacks = {
+				onTranscriptionResult: async (result: TranscriptionResult) => {
+					console.log('[Chat STT] Transcription result received:', {
+						text: result.text,
+						chunks: result.chunks?.length || 0
+					});
+
+					if (result.text && result.text.trim()) {
+						let transcribedText = result.text.trim();
+
+						// Apply spellcheck to transcribed text
+						try {
+							const spellcheckedText = await autocorrect(transcribedText);
+							if (spellcheckedText !== transcribedText) {
+								console.log('[Chat STT] Spellcheck applied:', {
+									original: transcribedText,
+									corrected: spellcheckedText
+								});
+								transcribedText = spellcheckedText;
+							}
+						} catch (error) {
+							console.warn('[Chat STT] Spellcheck failed, using original text:', error);
+						}
+
+						// Add transcribed (and corrected) text to input
+						inputText = (inputText + ' ' + transcribedText).trim();
+						console.log('[Chat STT] Added transcribed text to input:', transcribedText);
+
+						// Auto-send the transcribed message if enabled
+						if (autoSendTranscription) {
+							setTimeout(() => {
+								if (inputText.trim() && vrmInstance && !isLoadingResponse) {
+									console.log('[Chat STT] Auto-sending transcribed message:', inputText);
+									handleSpeak();
+								}
+							}, 500); // Small delay to ensure UI updates
+						}
+					} else {
+						console.warn('[Chat STT] Empty or invalid transcription result');
+					}
+					isTranscribing = false;
+					sttError = null; // Clear error on successful transcription
+				},
+				onSpeechStart: () => {
+					console.log('[Chat STT] Speech detection started');
+					voiceDetected = true;
+					isTranscribing = true;
+					sttError = null;
+				},
+				onSpeechEnd: () => {
+					console.log('[Chat STT] Speech detection ended, processing audio...');
+					voiceDetected = false;
+					// Keep isTranscribing true until we get the result
+				},
+				onError: (error: Error) => {
+					const errorMessage = error.message || 'Unknown STT error';
+					console.error('[Chat STT] Error occurred:', {
+						message: errorMessage,
+						stack: error.stack,
+						name: error.name
+					});
+
+					voiceDetected = false;
+					isTranscribing = false;
+					sttStatus = 'error';
+					sttError = errorMessage;
+
+					// Provide user-friendly error messages
+					if (errorMessage.includes('microphone') || errorMessage.includes('getUserMedia')) {
+						sttError = 'Microphone access denied. Please allow microphone access and try again.';
+					} else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+						sttError = 'Network error loading STT models. Check your connection.';
+					} else if (errorMessage.includes('WebAssembly') || errorMessage.includes('wasm')) {
+						sttError =
+							'Browser compatibility issue. Try a modern browser with WebAssembly support.';
+					} else if (
+						errorMessage.includes('task') ||
+						errorMessage.includes('language') ||
+						errorMessage.includes('English-only')
+					) {
+						sttError = 'Model configuration error. English-only models fixed automatically.';
+					}
+				},
+				onStatusChange: (status: STTStatus) => {
+					sttStatus = status;
+					console.log('[Chat STT] Status changed to:', status);
+
+					if (status === 'error') {
+						sttEnabled = false;
+						voiceDetected = false;
+					}
+				}
+			};
+
+			// Create STT client with enhanced configuration
+			const sttConfig = {
+				vad: {
+					startOnLoad: false,
+					positiveSpeechThreshold: 0.8,
+					negativeSpeechThreshold: 0.35,
+					minSpeechFrames: 5
+				},
+				whisper: {
+					modelId: 'Xenova/whisper-tiny.en',
+					dtype: 'q4' as const,
+					device: 'wasm' as const
+					// Don't specify language or task for English-only models
+					// The .en models are English-only and don't accept these parameters
+				},
+				autoStart: false
+			};
+
+			console.log('[Chat STT] Creating STT client with config:', sttConfig);
+			sttClient = new UnifiedSTTClient(sttConfig, sttCallbacks);
+			sttInitialized = true;
+			sttError = null;
+
+			// Run basic diagnostics
+			await runSTTDiagnostics();
+
+			console.log('[Chat STT] STT client created successfully');
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : 'Unknown initialization error';
+			console.error('[Chat STT] Failed to initialize STT:', {
+				error: errorMessage,
+				stack: error instanceof Error ? error.stack : undefined
+			});
+
+			sttStatus = 'error';
+			sttError = `Initialization failed: ${errorMessage}`;
+			sttInitialized = false;
+			sttEnabled = false;
+		}
+	}
+
+	// Diagnostic function to check STT environment
+	async function runSTTDiagnostics() {
+		console.log('[Chat STT] Running diagnostics...');
+
+		const diagnostics = {
+			webassembly: typeof WebAssembly !== 'undefined',
+			mediaDevices:
+				browser &&
+				typeof globalThis !== 'undefined' &&
+				globalThis.navigator?.mediaDevices !== undefined,
+			getUserMedia:
+				browser &&
+				typeof globalThis !== 'undefined' &&
+				globalThis.navigator?.mediaDevices?.getUserMedia !== undefined,
+			https:
+				browser &&
+				typeof globalThis !== 'undefined' &&
+				(globalThis.window?.location.protocol === 'https:' ||
+					globalThis.window?.location.hostname === 'localhost'),
+			audioContext:
+				typeof AudioContext !== 'undefined' ||
+				(browser &&
+					typeof globalThis !== 'undefined' &&
+					typeof (globalThis.window as any)?.webkitAudioContext !== 'undefined')
+		};
+
+		console.log('[Chat STT] Environment diagnostics:', diagnostics);
+
+		// Check for critical missing features
+		const issues = [];
+		if (!diagnostics.webassembly) issues.push('WebAssembly not supported');
+		if (!diagnostics.mediaDevices) issues.push('MediaDevices API not available');
+		if (!diagnostics.getUserMedia) issues.push('getUserMedia not available');
+		if (!diagnostics.https) issues.push('HTTPS required for microphone access');
+		if (!diagnostics.audioContext) issues.push('Web Audio API not supported');
+
+		if (issues.length > 0) {
+			const errorMsg = `Browser compatibility issues: ${issues.join(', ')}`;
+			console.warn('[Chat STT]', errorMsg);
+			sttError = errorMsg;
+			sttStatus = 'error';
+			return false;
+		}
+
+		console.log('[Chat STT] All diagnostic checks passed');
+		return true;
+	}
+
+	async function toggleSTT() {
+		if (!sttClient) {
+			console.warn('[Chat STT] STT client not initialized, attempting to reinitialize...');
+			try {
+				await initializeSTT();
+				if (!sttClient) {
+					sttError = 'Failed to initialize STT client';
+					sttStatus = 'error';
+					return;
+				}
+			} catch (error) {
+				const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+				sttError = `Reinitialization failed: ${errorMsg}`;
+				sttStatus = 'error';
+				return;
+			}
+		}
+
+		try {
+			if (sttEnabled) {
+				// Disable STT
+				console.log('[Chat STT] Disabling STT...');
+				sttClient.pause();
+				sttEnabled = false;
+				sttStatus = 'idle';
+				isTranscribing = false;
+				voiceDetected = false;
+				sttError = null;
+				console.log('[Chat STT] STT disabled successfully');
+			} else {
+				// Enable STT - initialize and start
+				console.log('[Chat STT] Enabling STT...');
+				sttError = null;
+				sttStatus = 'idle';
+
+				// Check for microphone permission first
+				try {
+					if (
+						!browser ||
+						typeof globalThis === 'undefined' ||
+						!globalThis.navigator?.mediaDevices
+					) {
+						throw new Error('MediaDevices API not available');
+					}
+					const stream = await globalThis.navigator.mediaDevices.getUserMedia({ audio: true });
+					stream.getTracks().forEach((track) => track.stop()); // Clean up test stream
+					console.log('[Chat STT] Microphone access confirmed');
+				} catch (micError) {
+					const micErrorMsg =
+						micError instanceof Error ? micError.message : 'Microphone access denied';
+					console.error('[Chat STT] Microphone access error:', micErrorMsg);
+					sttError =
+						'Microphone access required. Please allow microphone permission and try again.';
+					sttStatus = 'error';
+					return;
+				}
+
+				// Initialize STT system
+				console.log('[Chat STT] Initializing STT system...');
+				await sttClient.initialize();
+				console.log('[Chat STT] STT system initialized, starting listening...');
+
+				// Start listening
+				await sttClient.start();
+				sttEnabled = true;
+				console.log('[Chat STT] STT enabled and listening');
+			}
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : 'Unknown toggle error';
+			console.error('[Chat STT] Error toggling STT:', {
+				error: errorMessage,
+				stack: error instanceof Error ? error.stack : undefined,
+				wasEnabled: sttEnabled
+			});
+
+			sttEnabled = false;
+			sttStatus = 'error';
+			isTranscribing = false;
+			voiceDetected = false;
+
+			// Provide specific error messages based on the error type
+			if (errorMessage.includes('getUserMedia') || errorMessage.includes('NotAllowedError')) {
+				sttError = 'Microphone access denied. Please check browser permissions.';
+			} else if (errorMessage.includes('NotFoundError')) {
+				sttError = 'No microphone found. Please connect a microphone and try again.';
+			} else if (errorMessage.includes('initialize')) {
+				sttError = 'Failed to initialize speech recognition. Check browser compatibility.';
+			} else if (errorMessage.includes('start')) {
+				sttError = 'Failed to start listening. Try refreshing the page.';
+			} else {
+				sttError = `STT error: ${errorMessage}`;
+			}
+		}
+	}
 
 	// Function to check TTS status
 	async function checkTTSStatus() {
@@ -513,16 +835,120 @@
 		</div>
 	{/if}
 
+	<!-- STT Status Indicator -->
+	{#if sttInitialized || sttError}
+		<div class="mb-2 w-full max-w-md rounded-lg bg-gray-800 px-3 py-2">
+			<div class="flex items-center justify-between">
+				<div class="flex items-center gap-2">
+					<span class="text-sm font-medium text-gray-300">🎙️ STT:</span>
+					<span class="flex items-center gap-1">
+						{#if voiceDetected && sttEnabled}
+							<span class="h-2 w-2 animate-ping rounded-full bg-orange-500"></span>
+							<span class="text-xs font-semibold text-orange-400">Voice Detected!</span>
+						{:else if sttEnabled && sttStatus === 'listening' && isTranscribing}
+							<span class="h-2 w-2 animate-spin rounded-full bg-blue-500"></span>
+							<span class="text-xs text-blue-400">Processing...</span>
+						{:else if sttEnabled && sttStatus === 'listening'}
+							<span class="h-2 w-2 animate-pulse rounded-full bg-green-500"></span>
+							<span class="text-xs text-green-400">Listening</span>
+						{:else if sttEnabled && sttStatus === 'processing'}
+							<span class="h-2 w-2 animate-spin rounded-full bg-blue-500"></span>
+							<span class="text-xs text-blue-400">Transcribing...</span>
+						{:else if sttStatus === 'error' || sttError}
+							<span class="h-2 w-2 rounded-full bg-red-500"></span>
+							<span class="text-xs text-red-400">Error</span>
+						{:else}
+							<span class="h-2 w-2 rounded-full bg-gray-500"></span>
+							<span class="text-xs text-gray-400">{sttEnabled ? 'Ready' : 'Off'}</span>
+						{/if}
+					</span>
+				</div>
+				<div class="flex gap-1">
+					{#if sttEnabled}
+						<button
+							onclick={() => {
+								autoSendTranscription = !autoSendTranscription;
+							}}
+							class="text-xs {autoSendTranscription
+								? 'text-blue-400 hover:text-blue-300'
+								: 'text-gray-400 hover:text-gray-300'}"
+							title={autoSendTranscription
+								? 'Disable auto-send transcriptions'
+								: 'Enable auto-send transcriptions'}
+						>
+							{autoSendTranscription ? '⚡' : '📝'}
+						</button>
+					{/if}
+					<button
+						onclick={toggleSTT}
+						class="text-xs {sttEnabled
+							? 'text-green-400 hover:text-green-300'
+							: 'text-gray-400 hover:text-gray-300'}"
+						title={sttEnabled ? 'Disable STT' : 'Enable STT'}
+						disabled={isTranscribing}
+					>
+						{sttEnabled ? '🔇' : '🎤'}
+					</button>
+				</div>
+			</div>
+
+			<!-- Error Details -->
+			{#if sttError}
+				<div class="mt-2 rounded bg-red-900/20 px-2 py-1">
+					<div class="text-xs text-red-400">{sttError}</div>
+					<button
+						onclick={() => {
+							sttError = null;
+							sttStatus = 'idle';
+							initializeSTT();
+						}}
+						class="mt-1 text-xs text-red-300 underline hover:text-red-200"
+					>
+						Try again
+					</button>
+				</div>
+			{/if}
+
+			<!-- Debug Info (only in development) -->
+			{#if sttStatus && (sttStatus !== 'idle' || sttEnabled)}
+				<div class="mt-1 text-xs text-gray-500">
+					Status: {sttStatus} | Enabled: {sttEnabled} | Voice: {voiceDetected ? 'YES' : 'NO'} | Transcribing:
+					{isTranscribing}
+				</div>
+			{/if}
+		</div>
+	{/if}
+
 	<div class="relative mt-4 flex w-full max-w-md items-center gap-2">
 		<textarea
 			bind:value={inputText}
 			placeholder="Type your message to EMO..."
-			class="flex-1 rounded-lg bg-gray-700 px-2 py-2 pr-10 text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+			class="flex-1 rounded-lg bg-gray-700 px-2 py-2 pr-20 text-white placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:outline-none"
 			onkeydown={(e) => e.key === 'Enter' && handleSpeak()}
 			disabled={isLoadingResponse}
 			rows={2}
 		></textarea>
 
+		<!-- Microphone button -->
+		<button
+			onclick={toggleSTT}
+			class="absolute right-12 rounded-lg px-2 py-1.5 font-semibold transition-colors focus:ring-2 focus:outline-none disabled:opacity-50 {voiceDetected &&
+			sttEnabled
+				? 'animate-pulse bg-orange-500 text-white hover:bg-orange-600 focus:ring-orange-500'
+				: sttEnabled
+					? 'bg-green-500 text-white hover:bg-green-600 focus:ring-green-500'
+					: 'bg-gray-600 text-gray-300 hover:bg-gray-500 focus:ring-gray-500'}"
+			title={voiceDetected
+				? 'Voice detected! STT is active'
+				: sttEnabled
+					? 'Disable voice input (STT)'
+					: 'Enable voice input (STT)'}
+			disabled={isLoadingResponse || isTranscribing}
+		>
+			<Microphone />
+		</button>
+
+		<!-- Send button -->
 		<button
 			onclick={handleSpeak}
 			class="absolute right-2 rounded-lg bg-blue-500 px-2 py-1.5 font-semibold text-white hover:bg-blue-600 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:opacity-50"

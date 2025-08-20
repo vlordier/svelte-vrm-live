@@ -27,6 +27,26 @@ export class UnifiedSTTClient {
 	private isInitialized = false;
 
 	constructor(config?: Partial<STTConfig>, callbacks: STTCallbacks = {}) {
+		const modelId =
+			config?.whisper?.modelId || env.PUBLIC_WHISPER_MODEL_ID || 'Xenova/whisper-tiny.en';
+		const isEnglishOnly = modelId.includes('.en');
+
+		// Build whisper config based on model type
+		const whisperConfig: any = {
+			modelId,
+			dtype: config?.whisper?.dtype || (env.PUBLIC_WHISPER_DTYPE as WhisperConfig['dtype']) || 'q4',
+			device:
+				config?.whisper?.device || (env.PUBLIC_WHISPER_DEVICE as WhisperConfig['device']) || 'wasm',
+			returnTimestamps: config?.whisper?.returnTimestamps || false
+		};
+
+		// Only add language and task for multilingual models
+		if (!isEnglishOnly) {
+			whisperConfig.language = config?.whisper?.language || env.PUBLIC_WHISPER_LANGUAGE || 'en';
+			whisperConfig.task =
+				config?.whisper?.task || (env.PUBLIC_WHISPER_TASK as WhisperConfig['task']) || 'transcribe';
+		}
+
 		this.config = {
 			vad: {
 				startOnLoad: false,
@@ -35,19 +55,17 @@ export class UnifiedSTTClient {
 				minSpeechFrames: Number(env.PUBLIC_VAD_MIN_SPEECH_FRAMES) || 5,
 				...config?.vad
 			},
-			whisper: {
-				modelId: env.PUBLIC_WHISPER_MODEL_ID || 'Xenova/whisper-tiny.en',
-				dtype: (env.PUBLIC_WHISPER_DTYPE as WhisperConfig['dtype']) || 'q4',
-				device: (env.PUBLIC_WHISPER_DEVICE as WhisperConfig['device']) || 'wasm',
-				returnTimestamps: config?.whisper?.returnTimestamps || false,
-				language: env.PUBLIC_WHISPER_LANGUAGE || 'en',
-				task: (env.PUBLIC_WHISPER_TASK as WhisperConfig['task']) || 'transcribe',
-				...config?.whisper
-			},
+			whisper: whisperConfig,
 			autoStart: config?.autoStart ?? false
 		};
 
 		this.callbacks = callbacks;
+
+		// Log model configuration for debugging
+		console.log(`[STT] Using ${isEnglishOnly ? 'English-only' : 'multilingual'} model: ${modelId}`);
+		if (isEnglishOnly) {
+			console.log('[STT] English-only model detected - excluding language/task parameters');
+		}
 
 		// Initialize VAD with speech end callback
 		const vadCallbacks: VADCallbacks = {
