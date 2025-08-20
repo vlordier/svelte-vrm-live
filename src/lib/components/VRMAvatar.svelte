@@ -71,6 +71,10 @@
 			let ignore = false;
 			console.log('[VRMAvatar] Model path changed, loading:', modelPath);
 
+			// Clear old avatar immediately for better UX
+			vrm = null;
+			animationController = null;
+
 			loadVRMResources(modelPath).then((resources) => {
 				if (ignore) return;
 
