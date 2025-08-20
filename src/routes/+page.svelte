@@ -4,6 +4,7 @@
 	import type { VRM } from '@pixiv/three-vrm';
 	import Chat from '$lib/components/Chat.svelte';
 	import type { AnimationController } from '$lib/animation/AnimationController.svelte';
+	import { HTML } from '@threlte/extras';
 	import { onMount } from 'svelte';
 
 	let avatarModelPath = $state<string | null>(null); // Start with null, wait for API
@@ -14,6 +15,11 @@
 		try {
 			console.log('[Page] Fetching VRM config from API...');
 			const response = await fetch('/api/config');
+
+			if (!response.ok) {
+				throw new Error(`Failed to fetch config: ${response.status} ${response.statusText}`);
+			}
+
 			const config = await response.json();
 			console.log('[Page] VRM config received:', config);
 			avatarModelPath = config.vrmModel;
@@ -39,10 +45,12 @@
 		{#if avatarModelPath}
 			<VRMAvatar modelPath={avatarModelPath} bind:vrm={vrmInstance} bind:animationController />
 		{:else}
-			<!-- Loading state while waiting for VRM config -->
-			<div class="flex items-center justify-center text-white">
-				<p>Loading avatar configuration...</p>
-			</div>
+			<!-- Loading state while waiting for VRM config - use Threlte's HTML component for overlay -->
+			<HTML>
+				<div class="flex items-center justify-center text-white">
+					<p>Loading avatar configuration...</p>
+				</div>
+			</HTML>
 		{/if}
 	</Scene>
 

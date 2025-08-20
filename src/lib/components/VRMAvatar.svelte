@@ -81,10 +81,8 @@
 				if (resources) {
 					vrm = resources.vrm;
 					animationController = resources.animationController;
-				} else {
-					vrm = null;
-					animationController = null;
 				}
+				// Note: if resources is null, vrm and animationController remain null (set above)
 			});
 
 			return () => {

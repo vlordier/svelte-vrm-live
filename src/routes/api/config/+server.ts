@@ -1,21 +1,19 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { env } from '$env/dynamic/private';
-import { basename } from 'path';
 
 export const GET: RequestHandler = async () => {
-	const unsafeVrmModel = env.VRM_MODEL || 'punk.vrm';
+	const defaultModel = 'punk.vrm';
+	const unsafeVrmModel = env.VRM_MODEL || defaultModel;
 
-	// Use path.basename for robust path traversal protection
-	const baseFilename = basename(unsafeVrmModel);
+	// Use platform-agnostic string manipulation for portability instead of Node's `path` module
+	// Split on both forward and back slashes and get the last part (filename)
+	let baseFilename = unsafeVrmModel.split(/[\\/]/).pop() || '';
 
-	// Explicitly check for directory traversal patterns
+	// Explicitly check for directory traversal patterns and invalid names
 	if (baseFilename === '.' || baseFilename === '..' || baseFilename.length === 0) {
 		// Fallback to default model if suspicious input detected
-		const vrmModel = 'punk.vrm';
-		return json({
-			vrmModel: `/models/${vrmModel}`
-		});
+		baseFilename = defaultModel;
 	}
 
 	return json({
