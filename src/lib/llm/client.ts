@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, type Schema } from '@google/generative-ai';
 import { Ollama } from 'ollama';
 import { LMStudioClient } from '@lmstudio/sdk';
 import { env } from '$env/dynamic/private';
@@ -218,7 +218,7 @@ User request: ${prompt}`;
 			model: this.config.model,
 			generationConfig: {
 				responseMimeType: 'application/json',
-				responseSchema: schema as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+				responseSchema: schema as unknown as Schema,
 				maxOutputTokens: 64000
 			},
 			systemInstruction

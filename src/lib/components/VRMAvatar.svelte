@@ -35,38 +35,57 @@
 	const clock = new Clock();
 	const { scene: threlteScene } = useThrelte();
 
-	async function initVRMAndAnimation(path: string) {
+	async function loadVRMResources(
+		path: string
+	): Promise<{ vrm: VRM; animationController: AnimationController } | null> {
 		try {
 			console.log('[VRMAvatar] Loading VRM model from:', path);
 			const loadedVRM = await loadVRMModel(path);
-			vrm = loadedVRM;
 			console.log('[VRMAvatar] VRM loaded successfully:', loadedVRM);
 
 			if (loadedVRM.scene) {
-				// Ensure meshes within the VRM model cast shadows and adjust ShaderMaterials
+				// Ensure meshes within the VRM model cast shadows
 				loadedVRM.scene.traverse((child) => {
 					if ((child as Mesh).isMesh) {
 						const mesh = child as Mesh;
 						mesh.castShadow = true;
-						mesh.receiveShadow = true; // Default to true for most meshes
+						mesh.receiveShadow = true;
 					}
 				});
 
 				// Initialize animation controller
-				animationController = new AnimationController(loadedVRM, animationPaths);
+				const newAnimationController = new AnimationController(loadedVRM, animationPaths);
 				console.log('[VRMAvatar] AnimationController initialized');
+				return { vrm: loadedVRM, animationController: newAnimationController };
 			}
+			return null;
 		} catch (error) {
 			console.error('[VRMAvatar] Failed to load VRM model from', path, ':', error);
-			vrm = null;
+			return null;
 		}
 	}
 
-	// React to modelPath changes
+	// React to modelPath changes, handling race conditions
 	$effect(() => {
 		if (modelPath) {
+			let ignore = false;
 			console.log('[VRMAvatar] Model path changed, loading:', modelPath);
-			initVRMAndAnimation(modelPath);
+
+			loadVRMResources(modelPath).then((resources) => {
+				if (ignore) return;
+
+				if (resources) {
+					vrm = resources.vrm;
+					animationController = resources.animationController;
+				} else {
+					vrm = null;
+					animationController = null;
+				}
+			});
+
+			return () => {
+				ignore = true;
+			};
 		}
 	});
 
