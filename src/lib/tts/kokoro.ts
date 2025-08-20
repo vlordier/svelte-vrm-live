@@ -232,7 +232,7 @@ export class KokoroTTSClient {
 			let audioBuffer: ArrayBuffer;
 
 			if (audioData instanceof Float32Array) {
-				// Convert Float32Array to ArrayBuffer properly
+				// Create a copy of the audio data's underlying ArrayBuffer.
 				audioBuffer = (audioData.buffer as ArrayBuffer).slice(
 					audioData.byteOffset,
 					audioData.byteOffset + audioData.byteLength

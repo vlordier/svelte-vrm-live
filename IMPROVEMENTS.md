@@ -32,7 +32,7 @@ This document summarizes the comprehensive enterprise-grade improvements made to
 
 ### 🛡️ Robust Error Handling (NEW)
 
-- **Custom Error Classes**: AppError, ValidationError, NetworkError
+- **Custom Error Classes**: AppError, ValidationError, ExternalServiceError
 - **Retry Logic**: Exponential backoff for network operations
 - **Error Boundaries**: Graceful failure handling
 - **Safe Execution**: Protected async operations

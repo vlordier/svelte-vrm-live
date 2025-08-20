@@ -84,6 +84,7 @@
 		"kokoro-js": "^1.2.1",
 		"langdetect": "^0.2.1",
 		"ollama": "^0.5.17",
+		"postprocessing": "^6.37.7",
 		"three": "^0.176.0"
 	},
 	"lint-staged": {

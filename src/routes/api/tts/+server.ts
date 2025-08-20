@@ -31,6 +31,11 @@ export const POST: RequestHandler = async ({ request }) => {
 		`[TTS API] Using provider: ${ttsProvider} for text: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`
 	);
 
+	// Validate that browser TTS is not requested server-side
+	if (ttsProvider === 'browser') {
+		throw error(400, 'Browser TTS is a client-side feature and cannot be handled by the server.');
+	}
+
 	// Handle legacy ElevenLabs requests
 	if (ttsProvider === 'elevenlabs') {
 		return handleElevenLabsTTS(text);

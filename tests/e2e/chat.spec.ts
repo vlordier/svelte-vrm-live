@@ -288,8 +288,7 @@ test.describe('Chat Functionality', () => {
 
 	test('should handle textarea resize and formatting', async ({ page }) => {
 		const chatInput = page.locator('textarea[placeholder*="Type your message"]');
-		// eslint-disable-next-line @typescript-eslint/no-unused-vars
-		const _chatContainer = page.locator('div.rounded-lg.bg-gray-700');
+		// const chatContainer = page.locator('div.rounded-lg.bg-gray-700');
 
 		// Test multiline input
 		const multilineMessage = 'Line 1\nLine 2\nLine 3';

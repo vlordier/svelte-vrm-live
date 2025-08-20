@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, type Schema } from '@google/generative-ai';
 import { Ollama } from 'ollama';
 import { LMStudioClient } from '@lmstudio/sdk';
 import { env } from '$env/dynamic/private';
@@ -161,7 +161,7 @@ export class UnifiedLLMClient {
 				});
 				break;
 			case 'lmstudio':
-				this.lmstudioClient = new LMStudioClient();
+				this.lmstudioClient = new LMStudioClient({ baseUrl: this.config.baseUrl });
 				break;
 			default:
 				throw new Error(`Unsupported provider: ${this.config.provider}`);
@@ -197,7 +197,7 @@ export class UnifiedLLMClient {
 	async generateStructuredOutput(
 		systemInstruction: string,
 		prompt: string,
-		schema: Record<string, unknown>,
+		schema: Schema | Record<string, unknown>,
 		maxRetries = 10
 	): Promise<string> {
 		if (this.config.provider !== 'google') {
@@ -223,12 +223,15 @@ Response (JSON only):`;
 			return response.content;
 		}
 
+		// Transform schema to be compatible with Google's Schema type
+		const googleSchema = this.transformToGoogleSchema(schema);
+
 		// Use Google's structured output for Gemini
 		const model = this.googleClient!.getGenerativeModel({
 			model: this.config.model,
 			generationConfig: {
 				responseMimeType: 'application/json',
-				responseSchema: schema as any,
+				responseSchema: googleSchema,
 				maxOutputTokens: 64000
 			},
 			systemInstruction
@@ -389,6 +392,62 @@ Response (JSON only):`;
 
 	private sleep(ms: number): Promise<void> {
 		return new Promise((resolve) => setTimeout(resolve, ms));
+	}
+
+	/**
+	 * Transform a generic schema object to be compatible with Google's Schema type
+	 * This converts lowercase type strings to uppercase enum values expected by the SDK
+	 */
+	private transformToGoogleSchema(schema: Schema | Record<string, unknown>): Schema {
+		// If it's already a proper Schema type, return as-is
+		if (this.isGoogleSchema(schema)) {
+			return schema;
+		}
+
+		// Transform the generic schema to Google's format
+		const transform = (obj: any): any => {
+			if (typeof obj !== 'object' || obj === null) {
+				return obj;
+			}
+
+			if (Array.isArray(obj)) {
+				return obj.map(transform);
+			}
+
+			const result: any = {};
+			for (const [key, value] of Object.entries(obj)) {
+				if (key === 'type' && typeof value === 'string') {
+					// Convert lowercase type strings to uppercase enum values
+					const typeMap: Record<string, string> = {
+						object: 'OBJECT',
+						string: 'STRING',
+						number: 'NUMBER',
+						integer: 'INTEGER',
+						boolean: 'BOOLEAN',
+						array: 'ARRAY'
+					};
+					result[key] = typeMap[value] || value;
+				} else if (typeof value === 'object') {
+					result[key] = transform(value);
+				} else {
+					result[key] = value;
+				}
+			}
+			return result;
+		};
+
+		return transform(schema) as Schema;
+	}
+
+	/**
+	 * Check if a schema object is already in Google's Schema format
+	 */
+	private isGoogleSchema(schema: any): schema is Schema {
+		// Simple heuristic: if it has uppercase type values, assume it's already a Google schema
+		if (typeof schema === 'object' && schema !== null && 'type' in schema) {
+			return typeof schema.type === 'string' && schema.type === schema.type.toUpperCase();
+		}
+		return false;
 	}
 
 	getConfig(): LLMConfig {

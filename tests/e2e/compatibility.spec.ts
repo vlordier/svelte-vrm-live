@@ -182,10 +182,11 @@ test.describe('Browser Compatibility Tests', () => {
 			// Mock WebGL context creation failure
 			await page.addInitScript(() => {
 				const originalGetContext = HTMLCanvasElement.prototype.getContext;
-				HTMLCanvasElement.prototype.getContext = function (
+				(HTMLCanvasElement.prototype.getContext as any) = function (
+					this: HTMLCanvasElement,
 					contextType: string,
 					...args: any[]
-				): any {
+				) {
 					if (contextType === 'webgl' || contextType === 'experimental-webgl') {
 						return null; // Simulate WebGL not available
 					}

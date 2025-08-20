@@ -89,18 +89,7 @@ if (!info) {
 console.log(`Selected: ${info.name}`);
 
 // Check required environment variables
-const missingVars = [];
-if (currentProvider === 'google' && !process.env.GOOGLE_API_KEY) {
-	missingVars.push('GOOGLE_API_KEY');
-}
-if (currentProvider === 'ollama') {
-	if (!process.env.OLLAMA_BASE_URL) missingVars.push('OLLAMA_BASE_URL');
-	if (!process.env.OLLAMA_MODEL) missingVars.push('OLLAMA_MODEL');
-}
-if (currentProvider === 'lmstudio') {
-	if (!process.env.LMSTUDIO_BASE_URL) missingVars.push('LMSTUDIO_BASE_URL');
-	if (!process.env.LMSTUDIO_MODEL) missingVars.push('LMSTUDIO_MODEL');
-}
+const missingVars = info.requiredEnv.filter((envVar) => !process.env[envVar]);
 
 if (missingVars.length > 0) {
 	console.log(`❌ Missing required environment variables: ${missingVars.join(', ')}`);

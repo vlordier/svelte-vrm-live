@@ -375,7 +375,7 @@
 		bind:this={chatContainerElement}
 		class="mt-4 flex min-h-[24vh] w-full max-w-md flex-col overflow-y-auto rounded-lg bg-gray-700 p-4"
 	>
-		{#each chatHistory as message, index (index)}
+		{#each chatHistory as message (message.id)}
 			<span
 				class={`mb-2 inline-block max-w-[80%] rounded-lg px-3 py-1 ${message.role === 'user' ? 'ml-auto bg-blue-500 text-white' : 'bg-gray-600 text-white'}`}
 			>
