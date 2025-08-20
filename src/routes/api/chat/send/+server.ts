@@ -125,7 +125,7 @@ export async function POST({
 			}
 		} catch (e) {
 			// Fallback to regular chat if structured output fails
-			if (dev) console.log('[API Send] Structured output failed, falling back to regular chat');
+			if (dev) console.log('[API Send] Structured output failed, falling back to regular chat:', e);
 
 			const chatResponse = await llmClient.chat(messages);
 			avatarText = chatResponse.content;
