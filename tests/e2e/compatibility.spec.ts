@@ -8,10 +8,14 @@ test.describe('Browser Compatibility Tests', () => {
 	];
 
 	testBrowsers.forEach(({ name, device }) => {
+		test.describe.configure({ mode: 'parallel' });
 		test.describe(`${name} compatibility`, () => {
-			test.use({ ...device });
 
 			test(`should load correctly in ${name}`, async ({ page, browserName }) => {
+				// Use the device configuration for this test
+				await page.setViewportSize(device.viewport);
+				await page.setUserAgent(device.userAgent);
+				
 				await page.goto('/');
 				await page.waitForTimeout(3000);
 
@@ -28,6 +32,9 @@ test.describe('Browser Compatibility Tests', () => {
 			});
 
 			test(`should handle WebGL in ${name}`, async ({ page, browserName }) => {
+				// Use the device configuration for this test
+				await page.setViewportSize(device.viewport);
+				await page.setUserAgent(device.userAgent);
 				await page.goto('/');
 
 				// Check WebGL support
@@ -52,6 +59,10 @@ test.describe('Browser Compatibility Tests', () => {
 			});
 
 			test(`should handle JavaScript features in ${name}`, async ({ page, browserName }) => {
+				// Use the device configuration for this test
+				await page.setViewportSize(device.viewport);
+				await page.setUserAgent(device.userAgent);
+				
 				await page.goto('/');
 
 				// Test modern JavaScript features

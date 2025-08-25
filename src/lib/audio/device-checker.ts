@@ -1,4 +1,4 @@
-/* eslint-disable no-undef */
+ 
 import { browser } from '$app/environment';
 
 // Remove global declarations to avoid conflicts with DOM types

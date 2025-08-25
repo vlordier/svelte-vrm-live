@@ -51,8 +51,8 @@ test.describe('VRM Live App - Core Functionality', () => {
 		const chatInput = page.locator('textarea[placeholder*="Type your message"]');
 		await expect(chatInput).toBeVisible();
 
-		// Check send button
-		const sendButton = page.locator('button:has(svg)'); // Send button with icon
+		// Check send button (blue button in chat interface)
+		const sendButton = page.locator('button.bg-blue-500'); // Send button specifically
 		await expect(sendButton).toBeVisible();
 
 		// Take screenshot of chat interface
@@ -69,7 +69,7 @@ test.describe('VRM Live App - Core Functionality', () => {
 
 	test('should handle chat input interaction', async ({ page }) => {
 		const chatInput = page.locator('textarea[placeholder*="Type your message"]');
-		const sendButton = page.locator('button:has(svg)');
+		const sendButton = page.locator('button.bg-blue-500'); // Send button specifically
 
 		// Type a test message
 		await chatInput.fill('Hello EMO');

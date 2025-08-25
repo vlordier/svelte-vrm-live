@@ -29,6 +29,10 @@
 		"test:e2e:report": "playwright show-report",
 		"test:llm": "node scripts/test-llm.js",
 		"test:tts": "node scripts/test-tts.js",
+		"test:lam": "node scripts/test-lam-integration.js",
+		"setup:lam": "./scripts/setup-lam-audio2expression.sh",
+		"setup:lam:cuda": "./scripts/setup-lam-audio2expression.sh --cuda",
+		"setup:lam:full": "./scripts/setup-lam-audio2expression.sh --download-model",
 		"precommit": "lint-staged"
 	},
 	"devDependencies": {
