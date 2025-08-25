@@ -1,12 +1,9 @@
 import { VRMExpressionPresetName } from '@pixiv/three-vrm';
 import type { VRM } from '@pixiv/three-vrm';
+import { generateFallbackPhonemes, type PhonemeTiming } from './tts-phonemes';
 
 // --- TYPES ---
-type PhonemeTiming = {
-	phoneme: string;
-	start: number; // seconds
-	end: number; // seconds
-};
+// PhonemeTiming imported from tts-phonemes
 
 // Emotion type based on LLM output
 export type Emotion = 'angry' | 'happy' | 'neutral' | 'funny';
@@ -46,6 +43,9 @@ export const lipSyncPresets = {
 export function createLipSyncConfig(overrides: Partial<LipSyncConfig>): LipSyncConfig {
 	return { ...defaultLipSyncConfig, ...overrides };
 }
+
+// --- FALLBACK PHONEME GENERATION ---
+// Functions moved to tts-phonemes.ts module
 
 // --- IMPROVED PHONEME MAPPING WITH BLENDS ---
 const phonemeToVRM: Record<string, ExpressionWeight[]> = {
@@ -289,10 +289,10 @@ async function fetchSpeechWithPhonemes(
 		numberOfChannels: audioBuffer.numberOfChannels
 	});
 
-	// Extract phoneme timings
+	// Extract phoneme timings - with fallback generation
 	const timings: PhonemeTiming[] = [];
 
-	if (data.phonemes && Array.isArray(data.phonemes)) {
+	if (data.phonemes && Array.isArray(data.phonemes) && data.phonemes.length > 0) {
 		data.phonemes.forEach((phoneme: unknown) => {
 			if (
 				phoneme &&
@@ -311,6 +311,11 @@ async function fetchSpeechWithPhonemes(
 				});
 			}
 		});
+	} else {
+		// Fallback: Generate basic phoneme timings from text analysis
+		console.log('[TTS] No phonemes from API, generating fallback timings from text');
+		const fallbackTimings = generateFallbackPhonemes(text, audioBuffer.duration);
+		timings.push(...fallbackTimings);
 	}
 
 	console.log(`[TTS] Extracted ${timings.length} phoneme timings`);

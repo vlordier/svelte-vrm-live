@@ -5,7 +5,7 @@
 
 import type { RequestEvent } from '@sveltejs/kit';
 
-/* eslint-disable no-undef */
+ 
 import { error, json } from '@sveltejs/kit';
 import { languageValidator } from '$lib/utils/language-validator';
 

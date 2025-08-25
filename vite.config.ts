@@ -11,5 +11,10 @@ export default defineConfig({
 		esbuildOptions: {
 			target: 'esnext'
 		}
+	},
+	server: {
+		watch: {
+			ignored: ['**/python-services/**', '**/.tts-cache/**', '**/logs/**', '**/*.py', '**/*.log']
+		}
 	}
 });

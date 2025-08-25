@@ -8,6 +8,7 @@
 		createLipSyncConfig,
 		type Emotion
 	} from '$lib/audio/tts';
+	import { speakWithAudio2Expression } from '$lib/audio/audio2expression';
 	import type { ChatMessage } from '$lib/types/chat';
 	import type { AnimationController } from '$lib/animation/AnimationController.svelte';
 	import type { AnswerWithEmotion } from '$lib/llm/generative';
@@ -58,6 +59,7 @@
 	// Track speaking state
 	let isSpeaking = $state(false);
 	let ttsEnabled = $state(true); // Quick toggle to disable TTS entirely
+	let useAudio2Expression = $state(false); // Toggle between phoneme and Audio2Expression systems
 
 	// STT (Speech-to-Text) state
 	let sttClient = $state<UnifiedSTTClient | null>(null);
@@ -96,6 +98,9 @@
 					console.warn('[Chat] Failed to preload spellcheck dictionary');
 				}
 			});
+
+			// Pre-generate control data for welcome message
+			preGenerateWelcomeControls();
 		}
 	});
 
@@ -481,6 +486,48 @@
 		return false;
 	}
 
+	// Function to pre-generate control data for welcome message
+	async function preGenerateWelcomeControls() {
+		const welcomeText =
+			"Well hello there... First time here? What's your name? Tell me what brings you here?";
+
+		try {
+			console.log('[Chat] Pre-generating control data for welcome message...');
+
+			// Generate phoneme controls for Basic mode
+			const phonemeResponse = await fetch('/api/tts/generate-controls', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					text: welcomeText,
+					type: 'phonemes'
+				})
+			});
+
+			if (phonemeResponse.ok) {
+				console.log('[Chat] Phoneme controls pre-generated and cached');
+			}
+
+			// Generate blendshape controls for Advanced mode
+			if (useAudio2Expression) {
+				const blendshapeResponse = await fetch('/api/tts/generate-controls', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						text: welcomeText,
+						type: 'blendshapes'
+					})
+				});
+
+				if (blendshapeResponse.ok) {
+					console.log('[Chat] Blendshape controls pre-generated and cached');
+				}
+			}
+		} catch (error) {
+			console.log('[Chat] Control pre-generation failed (non-critical):', error);
+		}
+	}
+
 	// Function to play welcome message
 	async function playWelcomeMessage() {
 		if (hasPlayedWelcome || !vrmInstance || isSpeaking) {
@@ -519,7 +566,14 @@
 			isSpeaking = true;
 			console.log('[Chat] Playing welcome message:', welcomeText);
 
-			await speakWithLipsync(welcomeText, vrmInstance, lipSyncConfig, welcomeEmotion);
+			if (useAudio2Expression) {
+				await speakWithAudio2Expression(welcomeText, vrmInstance, {
+					fallbackToPhonemes: true,
+					debugLogging: true
+				});
+			} else {
+				await speakWithLipsync(welcomeText, vrmInstance, lipSyncConfig, welcomeEmotion);
+			}
 		} catch (error) {
 			console.error('Error playing welcome message:', error);
 		} finally {
@@ -622,12 +676,20 @@
 								ttsMessage.substring(0, 30) + '...'
 							);
 
-							speakWithLipsync(
-								ttsMessage,
-								vrmInstance,
-								lipSyncConfig,
-								responseData.emotion as Emotion
-							).finally(() => {
+							const speakFunction = useAudio2Expression
+								? speakWithAudio2Expression(ttsMessage, vrmInstance, {
+										fallbackToPhonemes: true,
+										debugLogging: true,
+										intensityMultiplier: 1.2
+									})
+								: speakWithLipsync(
+										ttsMessage,
+										vrmInstance,
+										lipSyncConfig,
+										responseData.emotion as Emotion
+									);
+
+							speakFunction.finally(() => {
 								isSpeaking = false;
 								console.log('[Chat] TTS completed');
 								// Stop talking animation and return to idle state smoothly
@@ -673,12 +735,14 @@
 							errorTTSMessage.substring(0, 30) + '...'
 						);
 
-						speakWithLipsync(
-							errorTTSMessage,
-							vrmInstance,
-							lipSyncConfig,
-							'neutral' as Emotion
-						).finally(() => {
+						const errorSpeakFunction = useAudio2Expression
+							? speakWithAudio2Expression(errorTTSMessage, vrmInstance, {
+									fallbackToPhonemes: true,
+									debugLogging: true
+								})
+							: speakWithLipsync(errorTTSMessage, vrmInstance, lipSyncConfig, 'neutral' as Emotion);
+
+						errorSpeakFunction.finally(() => {
 							isSpeaking = false;
 							console.log('[Chat] TTS completed');
 							// Stop talking animation and return to idle state smoothly
@@ -765,6 +829,50 @@
 				</button>
 			</div>
 		</div>
+
+		<!-- Animation Mode Switch -->
+		{#if ttsStatus === 'ready'}
+			<div class="mt-3 flex flex-col gap-2">
+				<span class="text-xs font-medium text-gray-400">Animation Mode:</span>
+				<div class="flex rounded-lg bg-gray-700 p-1">
+					<button
+						onclick={() => {
+							useAudio2Expression = false;
+						}}
+						class="flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-all {!useAudio2Expression
+							? 'bg-blue-500 text-white shadow-sm'
+							: 'text-gray-400 hover:text-gray-200'}"
+						title="Basic phoneme-based lip-sync animation"
+					>
+						📝 Basic
+					</button>
+					<button
+						onclick={() => {
+							useAudio2Expression = true;
+						}}
+						class="flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-all {useAudio2Expression
+							? 'bg-purple-500 text-white shadow-sm'
+							: 'text-gray-400 hover:text-gray-200'}"
+						title="Advanced Audio2Expression model (realistic facial expressions)"
+					>
+						🤖 Advanced
+					</button>
+				</div>
+				<div class="text-xs text-gray-500">
+					{#if useAudio2Expression}
+						<div class="flex items-center gap-1">
+							<span class="h-1.5 w-1.5 rounded-full bg-purple-500"></span>
+							Audio2Expression: Realistic facial expressions from audio
+						</div>
+					{:else}
+						<div class="flex items-center gap-1">
+							<span class="h-1.5 w-1.5 rounded-full bg-blue-500"></span>
+							Phoneme-based: Traditional lip-sync animation
+						</div>
+					{/if}
+				</div>
+			</div>
+		{/if}
 
 		<!-- Progress Bar -->
 		{#if (ttsStatus === 'downloading' || ttsStatus === 'initializing' || ttsStatus === 'retrying') && ttsProgress > 0}
@@ -918,6 +1026,46 @@
 			{/if}
 		</div>
 	{/if}
+
+	<!-- Lip Sync Mode Toggle -->
+	<div class="mb-2 w-full max-w-md rounded-lg bg-gray-800 px-3 py-2">
+		<div class="flex items-center justify-between">
+			<div class="flex items-center gap-2">
+				<span class="text-sm font-medium text-gray-300">🎆 Lip Sync:</span>
+				<span class="flex items-center gap-1">
+					{#if useAudio2Expression}
+						<span class="h-2 w-2 rounded-full bg-purple-500"></span>
+						<span class="text-xs text-purple-400">Advanced (AI)</span>
+					{:else}
+						<span class="h-2 w-2 rounded-full bg-blue-500"></span>
+						<span class="text-xs text-blue-400">Basic (Phoneme)</span>
+					{/if}
+				</span>
+			</div>
+			<div class="flex gap-1">
+				<button
+					onclick={() => { useAudio2Expression = !useAudio2Expression; }}
+					class="text-xs {useAudio2Expression 
+						? 'text-purple-400 hover:text-purple-300' 
+						: 'text-blue-400 hover:text-blue-300'}"
+					title={useAudio2Expression 
+						? 'Switch to Basic phoneme-based lip sync' 
+						: 'Switch to Advanced AI-powered facial animation'}
+				>
+					{useAudio2Expression ? '🧪' : '🤖'}
+				</button>
+			</div>
+		</div>
+
+		<!-- Mode Description -->
+		<div class="mt-2 text-xs text-gray-400">
+			{#if useAudio2Expression}
+				🎆 Advanced: Real-time WebSocket connection to AI model for realistic facial expressions
+			{:else}
+				📝 Basic: Traditional phoneme-based lip synchronization
+			{/if}
+		</div>
+	</div>
 
 	<div class="relative mt-4 flex w-full max-w-md items-center gap-2">
 		<textarea

@@ -56,14 +56,20 @@ export const POST: RequestHandler = async ({ request }) => {
 		const cached = TTSCache.getCachedWelcomeMessage(text, voice || 'default', ttsProvider);
 		if (cached) {
 			console.log('[TTS API] Using cached welcome message');
+
+			// Check for cached control data
+			const cachedControl = TTSCache.getCachedControl(text, voice || 'default', ttsProvider);
+			const phonemes = cachedControl?.phonemes || [];
+
 			return json({
 				audio_base64: cached.audioBase64,
 				sample_rate: cached.sampleRate,
 				duration: cached.duration,
 				provider: cached.provider,
 				voice: cached.voice,
-				phonemes: [],
-				cached: true
+				phonemes: phonemes,
+				cached: true,
+				controlCached: !!cachedControl
 			});
 		}
 	}
@@ -85,16 +91,41 @@ export const POST: RequestHandler = async ({ request }) => {
 			`[TTS API] Generated audio: ${base64Audio.length} chars, duration: ${result.duration.toFixed(2)}s`
 		);
 
-		// Cache welcome message for future use
+		// Cache welcome message and generate controls for future use
 		if (isWelcomeMessage && base64Audio.length > 0) {
 			TTSCache.cacheWelcomeMessage(
 				text,
-				voice || 'default',
+				voice || env.KOKORO_VOICE || 'af_bella',
 				ttsProvider,
 				base64Audio,
 				result.sampleRate,
 				result.duration
 			);
+
+			// Generate and cache phoneme controls
+			try {
+				const { generateFallbackPhonemes } = await import('$lib/audio/tts-phonemes');
+				const phonemeTimings = generateFallbackPhonemes(text, result.duration);
+				TTSCache.cacheControl(
+					text,
+					voice || env.KOKORO_VOICE || 'af_bella',
+					ttsProvider,
+					phonemeTimings,
+					undefined
+				);
+			} catch (error) {
+				console.log('[TTS API] Failed to generate phoneme controls:', error);
+			}
+		}
+
+		// Generate fallback phonemes for all TTS requests
+		let phonemeTimings: import('$lib/audio/tts-phonemes').PhonemeTiming[] = [];
+		try {
+			const { generateFallbackPhonemes } = await import('$lib/audio/tts-phonemes');
+			phonemeTimings = generateFallbackPhonemes(text, result.duration);
+			console.log(`[TTS API] Generated ${phonemeTimings.length} fallback phonemes`);
+		} catch (error) {
+			console.log('[TTS API] Failed to generate fallback phonemes:', error);
 		}
 
 		return json({
@@ -102,9 +133,8 @@ export const POST: RequestHandler = async ({ request }) => {
 			sample_rate: result.sampleRate,
 			duration: result.duration,
 			provider: ttsProvider,
-			voice: voice || 'default',
-			// Local TTS doesn't provide phoneme alignment yet
-			phonemes: [],
+			voice: voice || env.KOKORO_VOICE || 'af_bella',
+			phonemes: phonemeTimings,
 			cached: false
 		});
 	} catch (e: unknown) {

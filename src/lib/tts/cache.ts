@@ -13,9 +13,20 @@ interface CachedWelcomeMessage {
 	hash: string;
 }
 
+interface CachedControl {
+	text: string;
+	voice: string;
+	provider: string;
+	timestamp: number;
+	phonemes?: Array<{ phoneme: string; start: number; end: number }>;
+	blendshapes?: Array<{ timestamp: number; blendshapes: Record<string, number> }>;
+	hash: string;
+}
+
 export class TTSCache {
 	private static cacheDir = join(process.cwd(), '.tts-cache');
 	private static welcomeCacheFile = join(this.cacheDir, 'welcome-messages.json');
+	private static controlCacheFile = join(this.cacheDir, 'control-data.json');
 
 	private static ensureCacheDir(): void {
 		if (!existsSync(this.cacheDir)) {
@@ -100,11 +111,81 @@ export class TTSCache {
 		}
 	}
 
+	static getCachedControl(text: string, voice: string, provider: string): CachedControl | null {
+		try {
+			this.ensureCacheDir();
+
+			if (!existsSync(this.controlCacheFile)) {
+				return null;
+			}
+
+			const cache: Record<string, CachedControl> = JSON.parse(
+				readFileSync(this.controlCacheFile, 'utf-8')
+			);
+
+			const hash = this.generateHash(text, voice, provider);
+			const cached = cache[hash];
+
+			if (cached) {
+				console.log(`[TTS Cache] Found cached control data for ${voice} (${provider})`);
+				return cached;
+			}
+
+			return null;
+		} catch (error) {
+			console.error('[TTS Cache] Error reading control cache:', error);
+			return null;
+		}
+	}
+
+	static cacheControl(
+		text: string,
+		voice: string,
+		provider: string,
+		phonemes?: Array<{ phoneme: string; start: number; end: number }>,
+		blendshapes?: Array<{ timestamp: number; blendshapes: Record<string, number> }>
+	): void {
+		try {
+			this.ensureCacheDir();
+
+			let cache: Record<string, CachedControl> = {};
+			if (existsSync(this.controlCacheFile)) {
+				try {
+					cache = JSON.parse(readFileSync(this.controlCacheFile, 'utf-8'));
+				} catch {
+					console.log('[TTS Cache] Corrupted control cache file, creating new one');
+				}
+			}
+
+			const hash = this.generateHash(text, voice, provider);
+			const cachedControl: CachedControl = {
+				text,
+				voice,
+				provider,
+				timestamp: Date.now(),
+				phonemes,
+				blendshapes,
+				hash
+			};
+
+			cache[hash] = cachedControl;
+
+			writeFileSync(this.controlCacheFile, JSON.stringify(cache, null, 2));
+			console.log(`[TTS Cache] Cached control data for ${voice} (${provider})`);
+		} catch (error) {
+			console.error('[TTS Cache] Error writing control cache:', error);
+		}
+	}
+
 	static clearCache(): void {
 		try {
 			if (existsSync(this.welcomeCacheFile)) {
 				writeFileSync(this.welcomeCacheFile, '{}');
 				console.log('[TTS Cache] Cleared welcome message cache');
+			}
+			if (existsSync(this.controlCacheFile)) {
+				writeFileSync(this.controlCacheFile, '{}');
+				console.log('[TTS Cache] Cleared control data cache');
 			}
 		} catch (error) {
 			console.error('[TTS Cache] Error clearing cache:', error);
