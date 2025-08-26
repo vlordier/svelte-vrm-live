@@ -1,31 +1,66 @@
 # Threlte Live - 3D VRM Avatar Streaming Platform
 
-A SvelteKit application for live-streaming 3D VRM avatars with AI-powered chat, text-to-speech, mixamo animations.
+A SvelteKit application for live-streaming 3D VRM avatars with AI-powered chat, text-to-speech, and comprehensive animation systems.
 
 ![Banner!](showcase.png 'Showcase')
 [Click to see showcase video](showcase.mp4)
 
 ## Features
 
-- Threlte/Three.js for 3D rendering
-- VRM avatar loading and animation with @pixiv/three-vrm
-- **Multi-LLM Support**: Google Generative AI, Ollama, and LM Studio
-- Text-to-speech with lip-sync
-- Chat interface
-- Mixamo animation integration
+- **🎭 Advanced Animation System**: Mixamo FBX animations + 48+ VRMA poses with 3D props
+- **🤖 Multi-LLM Support**: Google Generative AI, Ollama, and LM Studio  
+- **🎨 3D Rendering**: Threlte/Three.js with VRM avatar support (@pixiv/three-vrm)
+- **🗣️ TTS & Lip-sync**: ElevenLabs integration with phoneme timing
+- **💬 AI Chat Interface**: Real-time conversation with emotion detection
+- **🎵 Audio2Expression**: LAM model integration for facial animation from audio
+- **🎤 Speech-to-Text**: VAD + Whisper for voice input
+- **🎪 Interactive Poses**: Adult-oriented VRMA pose system (18+ content)
 
 See [roadmap.md](roadmap.md) for full details and planned features.
+
+### Advanced Animation System
+
+The platform features a comprehensive animation system supporting multiple formats:
+
+#### **Traditional Animations (FBX + Mixamo)**
+- Idle, talking, and emotion-based animations
+- Automatic emotion detection and animation selection
+- Seamless animation blending and crossfading
+
+#### **VRMA Pose System** ⚠️ Adult Content (18+)
+- **48+ Interactive Poses** across 8 categories:
+  - Solo Female, Couples, Oral, Fetish, Handjobs, Teasing, Lesbian, Public, Advanced
+- **3D Props Integration**: Handcuffs, furniture, accessories automatically positioned
+- **Interactive UI**: Searchable pose selector with category filtering
+- **Coordinate System**: Props positioned using reference coordinate images
+
+**Test the Animation System**: Visit `/animations` in your browser for the interactive test scene.
+
+#### **Available Console Commands**:
+```javascript
+testAnimationSystem.logStatus()        // Log current animation status
+testAnimationSystem.testRandomPose()   // Apply a random pose
+testAnimationSystem.returnToIdle()     // Return to idle animation  
+logVRMPoseStatus()                     // Detailed system status
+```
 
 ### Text-to-Speech and Phonemes
 
 The project uses ElevenLabs TTS with phoneme timings for VRM lip-sync.
 
 Learn more:
-
 - [What is a Phoneme](https://elevenlabs.io/blog/what-is-a-phoneme)
 - [Prompting Controls](https://elevenlabs.io/docs/best-practices/prompting/controls)
 
 Phonemes mapped: A, AA, AH, AE, AO, AW, AY, E, EH, ER, EY, I, IH, IY, O, OH, OW, OY, U, UH, UW, M, B, P, F, V, TH, L, R, NEUTRAL.
+
+### Audio2Expression Integration
+
+Real-time facial animation generation from audio using LAM (Language-Aware Model):
+- **Python Service Backend**: FastAPI service for audio processing
+- **WebSocket Integration**: Real-time blendshape data streaming  
+- **TTS Phoneme Controls**: Generate facial animation control data from TTS
+- **Mock Fallback**: Graceful degradation when Python service unavailable
 
 ## Getting Started
 
@@ -142,10 +177,22 @@ The application features a unified LLM client (`src/lib/llm/client.ts`) that sup
 - `/api/chat/send`: Chat with structured output and emotion detection
 - `/api/generate`: Generate responses with emotion analysis
 - `/api/tts`: Text-to-speech with phoneme timing
+- `/api/tts/generate-controls`: Generate TTS control data for facial animation
+- `/api/audio2expression`: Audio-to-expression blendshape generation
+
+## Content Warning ⚠️
+
+This project includes adult-oriented content (18+ only):
+- VRMA pose system contains explicit poses and realistic anatomy
+- Adult themes in pose names and descriptions  
+- 3D props with mature themes
+- Content created by VunniBunni (credited in pose collection)
+
+For general audiences, the adult content can be disabled by setting `enablePoseSystem={false}` in VRM components.
 
 ## Keywords
 
-svelte, sveltekit, threejs, threlte, vrm, 3d-avatar, ai-chat, text-to-speech, lipsync, phonemes, mixamo, animations, ollama, lmstudio, local-llm, generative-ai, youtube-streaming
+svelte, sveltekit, threejs, threlte, vrm, 3d-avatar, ai-chat, text-to-speech, lipsync, phonemes, mixamo, animations, vrma, poses, adult-content, ollama, lmstudio, local-llm, generative-ai, audio2expression, speech-to-text, youtube-streaming
 
 ## Contributing
 
