@@ -434,6 +434,8 @@ class ServiceStatusManager {
 			case 'audio2expression': await this.updateAudio2ExpressionStatus(); break;
 			case 'python_service': await this.updatePythonServiceStatus(); break;
 			case 'whisper': await this.updateWhisperStatus(); break;
+			case 'vrm_system': this.updateVRMStatus(); break;
+			case 'animation_system': this.updateAnimationStatus(); break;
 			default:
 				throw new Error(`Unknown service: ${serviceName}`);
 		}
